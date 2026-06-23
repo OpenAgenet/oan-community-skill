@@ -1,0 +1,17 @@
+{
+  "name": "oan-skill",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit",
+    "test": "node ./node_modules/tsx/dist/cli.mjs tests/oan-skill-tests.ts"
+  },
+  "dependencies": {
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0"
+  }
+}

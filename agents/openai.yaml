@@ -1,0 +1,3 @@
+display_name: OAN Skill
+short_description: AI workflow skill for OAN registration, discovery, lifecycle, governance-state reads, and operator diagnostics.
+default_prompt: Help interact with OAN nodes safely through Registrar, Discovery, Root-adjacent inspection, CDN-adjacent inspection, and trust-indexer reads while preserving OAN trust semantics.
