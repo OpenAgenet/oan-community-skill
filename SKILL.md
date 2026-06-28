@@ -1,58 +1,64 @@
 ---
-name: oan-skill
-description: AI-facing workflow skill for OpenAgenet (OAN) resource registration, discovery, lifecycle inspection, capability-tag suggestion, governance-state reading through trust-indexer, and operator diagnostics. Use when Codex or another agent needs to interact with OAN Registrar, Discovery, Root-adjacent inspection, CDN-adjacent inspection, or trust-indexer APIs without inventing legacy agent-only flows or weakening OAN trust semantics.
+name: oan-community-skill
+description: Community-facing OpenAgenet (OAN) workflow skill for registering agent_service, skill, mcp_server, and tool_api resources through Registrar, querying Discovery including semantic discovery/explain results, validating registration submissions, managing local user/product identity material, and checking resource lifecycle against official or user-configured Registrar/Discovery endpoints. Use when helping community users consume OAN rather than operate OAN infrastructure.
 ---
 
-# OAN Skill
+# OAN Community Skill
 
-Use this skill to drive machine-facing OAN workflows.
+Use this skill for community-facing OAN usage workflows.
 
-Treat this skill as the orchestration layer.
+Keep this package focused on users who want to register products into OAN and
+discover products from OAN. Do not use it to start a full local OAN network,
+run pressure tests, perform official governance operations, or maintain official
+deployment environments.
 
-Use `oan-sdk-ts` as the reusable transport, protocol-type, and verification
-foundation.
+## Boundary
 
-Do not duplicate low-level HTTP client code or trust-verification primitives
-that already exist in `oan-sdk-ts`.
+Use this skill for:
 
-## Core Boundary
+- validating a resource registration submission
+- creating or reusing local identity material for a resource owner
+- registering `agent_service`, `skill`, `mcp_server`, or `tool_api` through a
+  Registrar
+- querying Discovery, including semantic query explanations when available
+- checking whether a registered resource has become visible in Discovery
+- suggesting capability tags for public product registration
+- using the official Registrar/Discovery by default, or user-configured
+  third-party Registrar/Discovery endpoints
 
-Keep the current real OAN service split intact:
+Do not use this skill for:
 
-- submit ordinary resource registration through Registrar
-- treat Discovery as the primary search surface
-- treat Root and CDN as inspection surfaces unless a workflow explicitly needs
-  them
-- treat trust-indexer as a governance-state reader, not as proof of Root-issued
-  runtime authorization
+- starting Root, Registrar, Discovery, CDN, NATS, or PostgreSQL locally
+- building a full local OAN topology for the user
+- official release gates, deployment checks, or pressure tests
+- official chain governance operations or governance-node runbooks
+- private genesis material, private benchmark fixtures, or official operator
+  secrets
 
-Do not collapse chain-visible governance state and Root runtime authorization
-into one boolean.
+## Endpoint Model
 
-## Supported Workflow Families
+Prefer official public endpoints unless the user provides explicit third-party
+endpoints:
 
-Use this skill for these workflow families:
+- Registrar: `https://registrar.openagenet.xyz`
+- Discovery: `https://discovery.openagenet.xyz`
+- Homepage: `https://openagenet.xyz`
+- Homepage API: `https://api.openagenet.xyz`
 
-- validate a resource-registration submission before network calls
-- register a resource through `/resources/register`
-- inspect lifecycle progression from Registrar to Root to CDN to Discovery
-- query Discovery and interpret query explanations
-- suggest capability tags through Registrar helpers
-- inspect governance-visible status through trust-indexer
-- inspect operator-facing reachability, Root-facing authorization, and Discovery
-  authorized domains
+Root and CDN may be used only as lifecycle inspection surfaces. Community users
+should normally interact through Registrar and Discovery concepts.
 
-## Current Resource Focus
+## Resource Focus
 
-Assume the first-class resource forms are:
+Assume these first-class resource forms:
 
 - `agent_service`
 - `skill`
 - `mcp_server`
 - `tool_api`
 
-Reject unsupported resource forms unless the underlying SDK and service surface
-have been extended intentionally.
+Reject unsupported resource forms unless the protocol types and live service
+surface have been intentionally extended.
 
 ## Required Semantics
 
@@ -66,26 +72,39 @@ Preserve these semantics:
 - protocol bindings must resolve to declared DID services when `serviceRef` is
   present
 - hash fields should use `algorithm:value` shape
+- private keys stay local; Registrar, Discovery, and homepage backends should
+  not receive raw private keys
+
+## Discovery And Semantic Search
+
+Use `/discovery/resources/query` as the main Discovery surface. Treat semantic
+search as a Discovery-side enhancement of that query flow, not as a separate
+community workflow requiring users to operate Discovery infrastructure.
+
+When available, read `/discovery/query/explain` output to explain why candidates
+matched. If semantic search is disabled or falls back to keyword search, present
+that as normal and continue with the returned candidates.
 
 ## Implementation Notes
 
-If you need package internals or tests, read:
+Read these files when changing package behavior:
 
 - `src/index.ts`
 - `src/validation.ts`
 - `src/registration.ts`
 - `src/discovery.ts`
 - `src/lifecycle.ts`
-- `src/governance-assist.ts`
-- `src/operator-assist.ts`
 - `src/capability-assist.ts`
-- `tests/oan-skill-tests.ts`
+- `tests/oan-community-skill-tests.ts`
 
-If you need the lower-level SDK surface, read:
+`src/governance-assist.ts` and `src/operator-assist.ts` are compatibility
+helpers from an earlier broader boundary. Do not grow them for new community
+workflows.
+
+If lower-level SDK details are needed, read:
 
 - `../oan-sdk-ts/packages/client-ts/src/index.ts`
 - `../oan-sdk-ts/packages/sdk-ts/src/index.ts`
-- `../oan-sdk-ts/packages/governance-ts/src/index.ts`
 - `../oan-sdk-ts/packages/protocol-types/src/index.ts`
 
 ## Output Expectations
@@ -99,12 +118,3 @@ Return structured results that help another agent continue the workflow:
 - suggested next actions
 
 Prefer actionable remediation over vague failure text.
-
-## Do Not Do
-
-Do not:
-
-- invent legacy `/agents/*` flows
-- submit ordinary registration directly to Root
-- claim trust-indexer state alone proves runtime usability
-- bypass DID, metadata, hash, or proof-related checks for convenience

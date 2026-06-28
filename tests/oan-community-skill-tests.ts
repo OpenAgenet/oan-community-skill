@@ -161,6 +161,7 @@ const skill = new OanSkill(
     rootReferenceEndpoint: "https://root.example",
     cdnReferenceEndpoint: "https://cdn.example",
     trustIndexerEndpoint: "https://indexer.example",
+    allowGovernanceStateReads: true,
   },
   { fetchImpl: fetchStub },
 );
@@ -173,7 +174,7 @@ const registration = await skill.register({ submission });
 assert(registration.ok, "registration should pass");
 assert(registration.stage === "visible-in-discovery", "registration stage mismatch");
 
-const identityDir = await mkdtemp(join(tmpdir(), "oan-skill-test-"));
+const identityDir = await mkdtemp(join(tmpdir(), "oan-community-skill-test-"));
 try {
   const generatedRegistration = await skill.register({
     identityDir,
@@ -224,4 +225,4 @@ assert(
   "capability assist suggestions mismatch",
 );
 
-console.log("oan-skill tests passed");
+console.log("oan-community-skill tests passed");

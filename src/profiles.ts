@@ -17,7 +17,7 @@ export function createDefaultProfile(overrides: Partial<OanSkillProfile> = {}): 
     verificationPolicy: "balanced",
     allowDirectRootInspection: true,
     allowDirectCdnInspection: true,
-    allowGovernanceStateReads: true,
+    allowGovernanceStateReads: false,
     ...overrides,
   };
 }

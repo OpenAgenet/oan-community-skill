@@ -1,11 +1,11 @@
 {
-  "name": "oan-skill",
+  "name": "oan-community-skill",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
     "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit",
-    "test": "node ./node_modules/tsx/dist/cli.mjs tests/oan-skill-tests.ts"
+    "test": "node ./node_modules/tsx/dist/cli.mjs tests/oan-community-skill-tests.ts"
   },
   "dependencies": {
     "tsx": "^4.21.0",
