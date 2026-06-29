@@ -41,20 +41,25 @@ Do not use this skill for:
 ## Endpoint Model
 
 Prefer official public endpoints unless the user provides explicit third-party
-endpoints. The TypeScript implementation should source official defaults from
-the SDK's `DEFAULT_OAN_OFFICIAL_ENDPOINTS` through
+`baseUrl` or endpoints. The TypeScript implementation should source official
+defaults from the SDK's `DEFAULT_OAN_OFFICIAL_ENDPOINTS` through
 `DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS`, so future official IP/domain migration
 is centralized.
 
-- Registrar: `https://registrar.openagenet.xyz`
-- Discovery: `https://discovery.openagenet.xyz`
+- Base URL: `https://api.openagenet.xyz`
 - Homepage: `https://openagenet.xyz`
 - Homepage API: `https://api.openagenet.xyz`
 
+Use `baseUrl` as the normal user-facing configuration. The SDK derives
+Registrar, Discovery, Root, and CDN calls from that base URL. If a user or
+third-party operator provides explicit `registrarEndpoint`, `discoveryEndpoint`,
+`rootReferenceEndpoint`, or `cdnReferenceEndpoint` values, those endpoint values
+override `baseUrl` for their corresponding nodes.
+
 Use `nodeSelectionMode: "official-preferred"` by default. Use
 `"custom-only"` when the user explicitly wants a third-party Registrar and
-Discovery pair. Use `"custom-preferred"` only when fallback to official nodes is
-acceptable for that workflow.
+Discovery pair or a third-party `baseUrl`. Use `"custom-preferred"` only when
+fallback to official nodes is acceptable for that workflow.
 
 Root and CDN may be used only as lifecycle inspection surfaces. Community users
 should normally interact through Registrar and Discovery concepts.

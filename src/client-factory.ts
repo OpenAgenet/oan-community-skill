@@ -6,7 +6,7 @@
 import { OanClient } from "../../oan-sdk-ts/packages/client-ts/src/index.js";
 import { GovernanceClient } from "../../oan-sdk-ts/packages/governance-ts/src/index.js";
 import type { OanSkillProfile } from "./types.js";
-import { selectDiscoveryEndpoint, selectRegistrarEndpoint } from "./profiles.js";
+import { selectBaseUrl, selectDiscoveryEndpoint, selectRegistrarEndpoint } from "./profiles.js";
 
 export interface SkillClientFactoryOptions {
   fetchImpl?: typeof fetch;
@@ -14,6 +14,7 @@ export interface SkillClientFactoryOptions {
 
 export function createOanClient(profile: OanSkillProfile, options: SkillClientFactoryOptions = {}): OanClient {
   return new OanClient({
+    baseUrl: selectBaseUrl(profile),
     registrarEndpoint: selectRegistrarEndpoint(profile),
     discoveryEndpoint: selectDiscoveryEndpoint(profile),
     rootEndpoint: profile.rootReferenceEndpoint,

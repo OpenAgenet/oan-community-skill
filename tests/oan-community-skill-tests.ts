@@ -54,10 +54,16 @@ const submission: ResourceRegistrationSubmission = {
 };
 
 const fetchStub = createFetchStub({
-  [`GET ${DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS.registrarEndpoint}/registrar/status`]: {
+  [`GET ${DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS.baseUrl}/registrar/status`]: {
     body: { status: "ok", rootAuthorizationStatus: "authorized" },
   },
-  [`GET ${DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS.discoveryEndpoint}/discovery/status`]: {
+  [`GET ${DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS.baseUrl}/discovery/status`]: {
+    body: { status: "ok", rootAuthorizationStatus: "authorized" },
+  },
+  "GET https://gateway.example/registrar/status": {
+    body: { status: "ok", rootAuthorizationStatus: "authorized" },
+  },
+  "GET https://gateway.example/discovery/status": {
     body: { status: "ok", rootAuthorizationStatus: "authorized" },
   },
   "POST https://registrar.example/resources/register": {
@@ -163,12 +169,12 @@ const fetchStub = createFetchStub({
 
 const defaultProfile = createDefaultProfile();
 assert(
-  defaultProfile.officialRegistrarEndpoints?.[0] === DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS.registrarEndpoint,
-  "default profile registrar should point to official endpoint",
+  defaultProfile.baseUrl === DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS.baseUrl,
+  "default profile should point to official baseUrl",
 );
 assert(
-  defaultProfile.officialDiscoveryEndpoints?.[0] === DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS.discoveryEndpoint,
-  "default profile discovery should point to official endpoint",
+  defaultProfile.officialRegistrarEndpoints?.length === 0 && defaultProfile.officialDiscoveryEndpoints?.length === 0,
+  "default profile should use baseUrl before explicit official endpoints",
 );
 
 const officialDefaultSkill = new OanSkill(defaultProfile, { fetchImpl: fetchStub });
@@ -176,6 +182,18 @@ const defaultOperator = await officialDefaultSkill.operatorAssist({});
 assert(defaultOperator.ok, "default official profile should reach official endpoints");
 assert(defaultOperator.data?.registrarReachable, "default official registrar should be reachable");
 assert(defaultOperator.data?.discoveryReachable, "default official discovery should be reachable");
+
+const gatewaySkill = new OanSkill(
+  createDefaultProfile({
+    nodeSelectionMode: "custom-only",
+    baseUrl: "https://gateway.example",
+  }),
+  { fetchImpl: fetchStub },
+);
+const gatewayOperator = await gatewaySkill.operatorAssist({});
+assert(gatewayOperator.ok, "custom baseUrl profile should reach gateway endpoints");
+assert(gatewayOperator.data?.registrarReachable, "gateway registrar should be reachable");
+assert(gatewayOperator.data?.discoveryReachable, "gateway discovery should be reachable");
 
 const skill = new OanSkill(
   {

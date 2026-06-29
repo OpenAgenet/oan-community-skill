@@ -36,6 +36,7 @@ export interface RetryPolicy {
 
 export interface OanSkillProfile {
   nodeSelectionMode: NodeSelectionMode;
+  baseUrl?: string;
   officialRegistrarEndpoints?: string[];
   officialDiscoveryEndpoints?: string[];
   customRegistrarEndpoints?: string[];
