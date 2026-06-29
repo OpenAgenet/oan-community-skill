@@ -24,6 +24,8 @@ Default community posture:
 
 - use official Registrar and Discovery endpoints unless the user configures
   third-party endpoints
+- keep official endpoint defaults centralized through the SDK-derived default
+  profile so future official IP/domain migration is a one-place update
 - keep private keys local
 - treat Root and CDN as lifecycle inspection surfaces, not ordinary user
   operation surfaces

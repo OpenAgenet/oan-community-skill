@@ -4,6 +4,7 @@
 // Email: jlxufly@gmail.com
 
 import { OanSkill } from "../src/index.js";
+import { createDefaultProfile, DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS } from "../src/profiles.js";
 import type { ResourceRegistrationSubmission } from "../../oan-sdk-ts/packages/protocol-types/src/index.js";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -53,6 +54,12 @@ const submission: ResourceRegistrationSubmission = {
 };
 
 const fetchStub = createFetchStub({
+  [`GET ${DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS.registrarEndpoint}/registrar/status`]: {
+    body: { status: "ok", rootAuthorizationStatus: "authorized" },
+  },
+  [`GET ${DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS.discoveryEndpoint}/discovery/status`]: {
+    body: { status: "ok", rootAuthorizationStatus: "authorized" },
+  },
   "POST https://registrar.example/resources/register": {
     body: { status: "submitted", resourceDid, resourceType: "skill" },
   },
@@ -153,6 +160,22 @@ const fetchStub = createFetchStub({
     },
   },
 });
+
+const defaultProfile = createDefaultProfile();
+assert(
+  defaultProfile.officialRegistrarEndpoints?.[0] === DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS.registrarEndpoint,
+  "default profile registrar should point to official endpoint",
+);
+assert(
+  defaultProfile.officialDiscoveryEndpoints?.[0] === DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS.discoveryEndpoint,
+  "default profile discovery should point to official endpoint",
+);
+
+const officialDefaultSkill = new OanSkill(defaultProfile, { fetchImpl: fetchStub });
+const defaultOperator = await officialDefaultSkill.operatorAssist({});
+assert(defaultOperator.ok, "default official profile should reach official endpoints");
+assert(defaultOperator.data?.registrarReachable, "default official registrar should be reachable");
+assert(defaultOperator.data?.discoveryReachable, "default official discovery should be reachable");
 
 const skill = new OanSkill(
   {

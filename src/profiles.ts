@@ -4,14 +4,25 @@
 // Email: jlxufly@gmail.com
 
 import type { OanSkillProfile } from "./types.js";
+import { DEFAULT_OAN_OFFICIAL_ENDPOINTS } from "../../oan-sdk-ts/packages/client-ts/src/index.js";
+
+export const DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS = {
+  registrarEndpoint: DEFAULT_OAN_OFFICIAL_ENDPOINTS.registrarEndpoint,
+  discoveryEndpoint: DEFAULT_OAN_OFFICIAL_ENDPOINTS.discoveryEndpoint,
+  rootEndpoint: DEFAULT_OAN_OFFICIAL_ENDPOINTS.rootEndpoint,
+  cdnEndpoint: DEFAULT_OAN_OFFICIAL_ENDPOINTS.cdnEndpoint,
+  trustIndexerEndpoint: DEFAULT_OAN_OFFICIAL_ENDPOINTS.trustIndexerEndpoint,
+};
 
 export function createDefaultProfile(overrides: Partial<OanSkillProfile> = {}): OanSkillProfile {
   return {
     nodeSelectionMode: "official-preferred",
-    officialRegistrarEndpoints: [],
-    officialDiscoveryEndpoints: [],
+    officialRegistrarEndpoints: [DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS.registrarEndpoint],
+    officialDiscoveryEndpoints: [DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS.discoveryEndpoint],
     customRegistrarEndpoints: [],
     customDiscoveryEndpoints: [],
+    rootReferenceEndpoint: DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS.rootEndpoint,
+    cdnReferenceEndpoint: DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS.cdnEndpoint,
     requestTimeoutMs: 15_000,
     retryPolicy: { maxAttempts: 2, delayMs: 500 },
     verificationPolicy: "balanced",
