@@ -82,6 +82,24 @@ export function validateRegistrationInput(
     };
   }
 
+  const domainError = validateCommunityAuthorizedDomains(
+    submission.didDocument.oanMetadata?.authorizedDomains,
+  );
+  if (domainError) {
+    return {
+      ok: false,
+      stage: "failed-validation",
+      errorCategory: "input error",
+      errorMessage: domainError,
+      suggestedNextActions: [
+        domainError === "resource_domains_required"
+          ? "Add explicit didDocument.oanMetadata.authorizedDomains before final registration."
+          : "Use sorted, unique canonical domains, or the single wildcard [\"*\"].",
+      ],
+    };
+  }
+  findings.push("authorizedDomains are explicit and well-formed");
+
   if (!submission.packageHash || !submission.metadataHash || !submission.hashAlgorithm) {
     return {
       ok: false,
@@ -129,4 +147,36 @@ export function validateRegistrationInput(
     verificationFindings: findings,
     suggestedNextActions: ["Submit the validated resource to a Registrar endpoint."],
   };
+}
+
+export function validateCommunityAuthorizedDomains(
+  domains: unknown,
+): "resource_domains_required" | "invalid_authorized_domains" | undefined {
+  if (!Array.isArray(domains) || domains.length === 0) {
+    return "resource_domains_required";
+  }
+  if (domains.some((domain) => typeof domain !== "string")) {
+    return "invalid_authorized_domains";
+  }
+  const values = domains as string[];
+  if (values.includes("*")) {
+    return values.length === 1 ? undefined : "invalid_authorized_domains";
+  }
+  for (const domain of values) {
+    if (
+      domain.trim() !== domain ||
+      domain.length === 0 ||
+      domain.startsWith(".") ||
+      domain.endsWith(".") ||
+      domain.includes("..")
+    ) {
+      return "invalid_authorized_domains";
+    }
+  }
+  for (let index = 1; index < values.length; index += 1) {
+    if (values[index - 1] >= values[index]) {
+      return "invalid_authorized_domains";
+    }
+  }
+  return undefined;
 }

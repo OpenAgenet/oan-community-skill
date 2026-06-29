@@ -1,3 +1,3 @@
 display_name: OAN Community Skill
-short_description: Community AI workflow skill for OAN product registration, Discovery and semantic discovery, lifecycle checks, and capability tags.
-default_prompt: Help community users register agent_service, skill, mcp_server, and tool_api resources through Registrar and query Discovery safely, using official or user-configured endpoints while preserving OAN trust semantics.
+short_description: Community workflow skill for OAN product registration, Discovery, semantic discovery, lifecycle checks, capability tags, and authorized-domain diagnostics.
+default_prompt: Help community users register agent_service, skill, mcp_server, and tool_api resources through Registrar and query Discovery safely, using official or user-configured endpoints while preserving OAN trust semantics, explicit authorizedDomains, capability-tag separation, and local private keys.

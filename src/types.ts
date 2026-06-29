@@ -75,6 +75,7 @@ export interface RegistrationSkillInput {
     resourceType: Extract<ResourceType, "agent_service" | "skill" | "mcp_server" | "tool_api">;
     description?: string;
     capabilityTags?: string[];
+    authorizedDomains?: string[];
     endpoint?: string;
     manifestUrl?: string;
     schemaUrl?: string;

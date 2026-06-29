@@ -43,6 +43,7 @@ const submission: ResourceRegistrationSubmission = {
     oanMetadata: {
       subjectType: "skill",
       resourceType: "skill",
+      authorizedDomains: ["legal"],
     },
   },
   packageVersion: "1.0.0",
@@ -114,13 +115,13 @@ const fetchStub = createFetchStub({
       discoveryDid: "did:oan:INDS:test",
       rootReachable: true,
       status: "authorized",
-      authorizedDomains: ["openagenet.local"],
+      authorizedDomains: ["technology.software_engineering"],
     },
   },
   "GET https://discovery.example/discovery/authorized-domains": {
     body: {
       discoveryDid: "did:oan:INDS:test",
-      authorizedDomains: ["openagenet.local"],
+      authorizedDomains: ["technology.software_engineering"],
     },
   },
   "POST https://discovery.example/discovery/resources/query": {
@@ -170,6 +171,43 @@ const validation = skill.validate({ submission });
 assert(validation.ok, "validation should pass");
 assert(validation.stage === "draft-prepared", "validation stage mismatch");
 
+const missingDomainValidation = skill.validate({
+  submission: {
+    ...submission,
+    didDocument: {
+      ...submission.didDocument,
+      oanMetadata: {
+        subjectType: "skill",
+        resourceType: "skill",
+      },
+    },
+  },
+});
+assert(!missingDomainValidation.ok, "missing authorizedDomains should fail validation");
+assert(
+  missingDomainValidation.errorMessage === "resource_domains_required",
+  "missing authorizedDomains error mismatch",
+);
+
+const mixedWildcardValidation = skill.validate({
+  submission: {
+    ...submission,
+    didDocument: {
+      ...submission.didDocument,
+      oanMetadata: {
+        subjectType: "skill",
+        resourceType: "skill",
+        authorizedDomains: ["*", "legal"],
+      },
+    },
+  },
+});
+assert(!mixedWildcardValidation.ok, "mixed wildcard domains should fail validation");
+assert(
+  mixedWildcardValidation.errorMessage === "invalid_authorized_domains",
+  "mixed wildcard authorizedDomains error mismatch",
+);
+
 const registration = await skill.register({ submission });
 assert(registration.ok, "registration should pass");
 assert(registration.stage === "visible-in-discovery", "registration stage mismatch");
@@ -183,12 +221,17 @@ try {
       resourceType: "skill",
       description: "Generated through local identity mode.",
       capabilityTags: ["generated.skill"],
+      authorizedDomains: ["legal"],
       manifestUrl: "https://example.org/skills/generated.json",
     },
   });
   assert(generatedRegistration.ok, "generated registration should pass");
   assert(generatedRegistration.data?.subjectIdentity?.did, "generated registration should return subject identity");
   assert(generatedRegistration.data?.agentIdentity?.did, "generated registration should return agent identity");
+  assert(
+    generatedRegistration.data?.agentIdentity?.profile.authorizedDomains?.[0] === "legal",
+    "generated registration should retain authorized domains",
+  );
 } finally {
   await rm(identityDir, { recursive: true, force: true });
 }
@@ -214,7 +257,7 @@ assert(operator.ok, "operator assist should pass");
 assert(operator.data?.registrarReachable, "registrar should be reachable");
 assert(operator.data?.discoveryReachable, "discovery should be reachable");
 assert(
-  operator.data?.discoveryAuthorizedDomains?.authorizedDomains?.[0] === "openagenet.local",
+  operator.data?.discoveryAuthorizedDomains?.authorizedDomains?.[0] === "technology.software_engineering",
   "operator assist authorized domains mismatch",
 );
 

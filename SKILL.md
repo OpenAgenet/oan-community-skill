@@ -29,9 +29,12 @@ Use this skill for:
 Do not use this skill for:
 
 - starting Root, Registrar, Discovery, CDN, NATS, or PostgreSQL locally
+- assuming access to a Root-private trust-indexer endpoint
 - building a full local OAN topology for the user
 - official release gates, deployment checks, or pressure tests
 - official chain governance operations or governance-node runbooks
+- chain-governance proposal creation, voting, execution refresh, package
+  deployment, or package upgrade signing
 - private genesis material, private benchmark fixtures, or official operator
   secrets
 
@@ -72,8 +75,34 @@ Preserve these semantics:
 - protocol bindings must resolve to declared DID services when `serviceRef` is
   present
 - hash fields should use `algorithm:value` shape
+- `oanMetadata.authorizedDomains` should be explicit for registered resources
+  when the Registrar or user workflow knows the intended authorization domain
 - private keys stay local; Registrar, Discovery, and homepage backends should
   not receive raw private keys
+
+## Authorized Domains
+
+For community resource registration, treat `authorizedDomains` as a first-class
+authorization field, separate from `capabilityTags`.
+
+- Require final registration submissions to carry non-empty
+  `didDocument.oanMetadata.authorizedDomains`.
+- Use `["*"]` only when all-domain authorization is intentionally granted by
+  the selected Registrar or workflow.
+- Use concrete canonical domains when the product belongs to a known domain,
+  and keep them sorted and unique.
+- Leave domain selection to the user or Registrar when the community workflow
+  cannot determine it safely, but do not submit a final registration until the
+  Registrar/user workflow has written explicit domains.
+- Do not infer authorized domains from DID semantic code.
+- Do not use capability tags to widen authorization.
+- Preserve capability tags as search and semantic discovery signals.
+
+Read `references/authorized-domains-community.md` when helping a user choose
+resource domains, diagnose Registrar rejection codes such as
+`resource_domains_required`, `invalid_authorized_domains`, or
+`unauthorized_domains`, or explain why Discovery results are filtered by
+authorization scope.
 
 ## Discovery And Semantic Search
 
@@ -100,6 +129,17 @@ Read these files when changing package behavior:
 `src/governance-assist.ts` and `src/operator-assist.ts` are compatibility
 helpers from an earlier broader boundary. Do not grow them for new community
 workflows.
+
+Community governance support is read-only. It may call trust-indexer to explain
+whether a Registrar, Discovery node, or VC issuer appears active, but it must
+not submit governance proposals, votes, execution refreshes, package upgrades,
+or other chain writer transactions.
+
+Do not assume the indexer used by an official Root node is available to
+community users. If a community workflow needs governance-state reads, use an
+explicit user-provided/public trust-indexer endpoint or guide the operator to
+run their own indexer. Registrar and Discovery nodes do not run trust-indexer by
+default in the current model.
 
 If lower-level SDK details are needed, read:
 

@@ -117,6 +117,7 @@ async function prepareSubmission(
       identityDir: ensuredSubject.identityDir,
       description: input.generateIdentity.description,
       capabilityTags: input.generateIdentity.capabilityTags,
+      authorizedDomains: input.generateIdentity.authorizedDomains,
       serviceEndpoint: input.generateIdentity.endpoint,
       manifestUrl: input.generateIdentity.manifestUrl,
       schemaUrl: input.generateIdentity.schemaUrl,
@@ -129,6 +130,7 @@ async function prepareSubmission(
     manifestUrl: input.generateIdentity.manifestUrl,
     schemaUrl: input.generateIdentity.schemaUrl,
     capabilityTags: input.generateIdentity.capabilityTags,
+    authorizedDomains: input.generateIdentity.authorizedDomains,
     description: input.generateIdentity.description,
   });
 

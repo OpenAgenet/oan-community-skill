@@ -30,7 +30,13 @@ Default community posture:
 - do not start a full local Root/Registrar/Discovery/CDN/NATS topology
 
 Official operations, pressure tests, local/cloud deployment environment setup,
-and chain-governance runbooks are outside this community package.
+and chain-governance runbooks are outside this community package. Community
+governance helpers are read-only status checks; proposal creation, voting,
+execution refresh, deployment, and package upgrades belong in official
+operations skills. Do not assume access to a Root-private trust-indexer;
+community users who need governance-state reads should use an explicit public
+endpoint or run their own indexer. Registrar and Discovery nodes do not run an
+indexer by default.
 
 The TypeScript implementation builds on `oan-sdk-ts` and should not duplicate
 low-level protocol types, HTTP transport, or verification primitives.
