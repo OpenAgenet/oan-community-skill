@@ -18,15 +18,21 @@ import { discoverResourcesWithSkill } from "./discovery.js";
 import { governanceAssistWithSkill } from "./governance-assist.js";
 import { inspectLifecycleWithSkill } from "./lifecycle.js";
 import { operatorAssistWithSkill } from "./operator-assist.js";
-import { suggestCapabilityTagsWithSkill } from "./capability-assist.js";
+import {
+  suggestCapabilityTagsWithSkill,
+  suggestDiscoveryQueryWithSkill,
+  suggestRegistrationMetadataWithSkill,
+} from "./capability-assist.js";
 import { registerResourceWithSkill } from "./registration.js";
 import { validateRegistrationInput } from "./validation.js";
 import type {
+  DiscoveryQueryAssistInput,
   DiscoverySkillInput,
   GovernanceAssistInput,
   LifecycleSkillInput,
   OanSkillProfile,
   OperatorAssistInput,
+  RegistrationMetadataAssistInput,
   RegistrationSkillInput,
   ValidationSkillInput,
   CapabilityAssistInput,
@@ -65,5 +71,13 @@ export class OanSkill {
 
   capabilityAssist(input: CapabilityAssistInput) {
     return suggestCapabilityTagsWithSkill(this.profile, input, this.options);
+  }
+
+  registrationMetadataAssist(input: RegistrationMetadataAssistInput) {
+    return suggestRegistrationMetadataWithSkill(this.profile, input, this.options);
+  }
+
+  discoveryQueryAssist(input: DiscoveryQueryAssistInput) {
+    return suggestDiscoveryQueryWithSkill(this.profile, input, this.options);
   }
 }

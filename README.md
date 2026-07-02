@@ -18,7 +18,7 @@ Primary workflows:
 - register `agent_service`, `skill`, `mcp_server`, and `tool_api`
 - query Discovery, including semantic query explanations when available
 - inspect resource lifecycle from a product-owner perspective
-- suggest capability tags
+- suggest registration metadata, capability tags, and Discovery query filters
 
 Default community posture:
 
@@ -27,6 +27,9 @@ Default community posture:
 - keep official endpoint defaults centralized through the SDK-derived default
   profile so future official IP/domain migration is a one-place update
 - keep private keys local
+- treat assisted suggestions as editable user help: `authorizedDomains` must
+  stay valid for the selected Registrar, while `capabilityTags` can be edited,
+  removed, or extended
 - treat Root and CDN as lifecycle inspection surfaces, not ordinary user
   operation surfaces
 - do not start a full local Root/Registrar/Discovery/CDN/NATS topology

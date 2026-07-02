@@ -8,10 +8,16 @@ import type {
 } from "../../oan-sdk-ts/packages/governance-ts/src/index.js";
 import type {
   ResourceType,
+  CapabilityTagNormalizeResponse,
   CapabilityTagSuggestionResponse,
+  DiscoverySuggestionInput,
+  DiscoverySuggestionResult,
   DiscoveryAuthorizedDomainsResponse,
   OanLifecycleSnapshot,
   OanWorkflowStage,
+  RegistrationDomainCatalogResponse,
+  RegistrationSuggestionInput,
+  RegistrationSuggestionResult,
   ResourceDiscoveryExplainResponse,
   ResourceDiscoveryQuery,
   ResourceDiscoveryResponse,
@@ -142,8 +148,23 @@ export interface OperatorAssistOutput {
 export interface CapabilityAssistInput {
   description?: string;
   query?: string;
+  tags?: string[];
 }
 
 export interface CapabilityAssistOutput {
   suggestions: CapabilityTagSuggestionResponse;
+  normalized?: CapabilityTagNormalizeResponse;
+}
+
+export interface RegistrationMetadataAssistInput extends RegistrationSuggestionInput {}
+
+export interface RegistrationMetadataAssistOutput {
+  suggestions: RegistrationSuggestionResult;
+  domainCatalog?: RegistrationDomainCatalogResponse;
+}
+
+export interface DiscoveryQueryAssistInput extends DiscoverySuggestionInput {}
+
+export interface DiscoveryQueryAssistOutput {
+  suggestions: DiscoverySuggestionResult;
 }

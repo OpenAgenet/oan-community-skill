@@ -80,7 +80,45 @@ const fetchStub = createFetchStub({
     },
   },
   "POST https://registrar.example/capability-tags/suggest": {
-    body: { suggestions: ["protocol.mcp"] },
+    body: { suggestions: ["protocol.mcp"], capabilityTags: [{ value: "protocol.mcp", score: 0.9 }] },
+  },
+  "POST https://registrar.example/capability-tags/normalize": {
+    body: {
+      tags: ["protocol.mcp", "security.audit"],
+      capabilityTags: ["protocol.mcp", "security.audit"],
+    },
+  },
+  "GET https://registrar.example/registration/domain-catalog": {
+    body: {
+      authorizedDomains: ["technology.software_engineering", "legal"],
+      wildcard: false,
+      domains: [
+        { id: "legal", label: "Legal", parent: null, selectable: true },
+        {
+          id: "technology.software_engineering",
+          label: "Software Engineering",
+          parent: "technology",
+          selectable: true,
+        },
+      ],
+    },
+  },
+  "POST https://registrar.example/registration/suggestions": {
+    body: {
+      authorizedDomains: [
+        {
+          id: "technology.software_engineering",
+          label: "Software Engineering",
+          score: 0.87,
+          covered: true,
+          reason: "Matched software development wording.",
+          evidence: [{ source: "description", value: "MCP server for developer automation" }],
+        },
+      ],
+      capabilityTags: [{ value: "protocol.mcp", score: 0.91, reason: "Matched MCP protocol wording." }],
+      resourceTypeHints: [{ value: "mcp_server", score: 0.8 }],
+      protocolHints: [{ value: "mcp", score: 0.8 }],
+    },
   },
   [`GET https://registrar.example/resources/${encodeURIComponent(resourceDid)}`]: {
     body: { resourceDid, record: { resourceDid, status: "submitted" } },
@@ -153,6 +191,22 @@ const fetchStub = createFetchStub({
       items: [{ resourceDid, resourceType: "skill", matched: true, score: 1 }],
       candidateCount: 1,
       usedIndexedPrefilter: true,
+    },
+  },
+  "POST https://discovery.example/discovery/query/suggestions": {
+    body: {
+      authorizedDomainHints: [
+        {
+          id: "technology.software_engineering",
+          label: "Software Engineering",
+          score: 0.84,
+          covered: true,
+          reason: "Matched developer tooling query.",
+        },
+      ],
+      capabilityTags: [{ value: "protocol.mcp", score: 0.9 }],
+      resourceTypes: [{ value: "mcp_server", score: 0.8 }],
+      protocols: [{ value: "mcp", score: 0.8 }],
     },
   },
   "GET https://indexer.example/v1/subjects/2/did%3Aoan%3AINDS%3Atest/governance-active": {
@@ -302,11 +356,43 @@ assert(
   "operator assist authorized domains mismatch",
 );
 
-const capabilityAssist = await skill.capabilityAssist({ query: "mcp server" });
+const capabilityAssist = await skill.capabilityAssist({ query: "mcp server", tags: [" Protocol MCP ", "security audit"] });
 assert(capabilityAssist.ok, "capability assist should pass");
 assert(
   capabilityAssist.data?.suggestions.suggestions?.[0] === "protocol.mcp",
   "capability assist suggestions mismatch",
+);
+assert(
+  capabilityAssist.data?.suggestions.capabilityTags?.[0]?.value === "protocol.mcp",
+  "capability assist structured suggestions mismatch",
+);
+assert(
+  capabilityAssist.data?.normalized?.tags[1] === "security.audit",
+  "capability assist normalization mismatch",
+);
+
+const registrationMetadataAssist = await skill.registrationMetadataAssist({
+  name: "Developer MCP Server",
+  description: "MCP server for developer automation and software engineering workflows.",
+  resourceType: "mcp_server",
+});
+assert(registrationMetadataAssist.ok, "registration metadata assist should pass");
+assert(
+  registrationMetadataAssist.data?.suggestions.authorizedDomains[0]?.id === "technology.software_engineering",
+  "registration metadata domain suggestion mismatch",
+);
+assert(
+  registrationMetadataAssist.data?.domainCatalog?.domains?.length === 2,
+  "registration metadata domain catalog mismatch",
+);
+
+const discoveryQueryAssist = await skill.discoveryQueryAssist({
+  query: "Find MCP servers for software engineering automation.",
+});
+assert(discoveryQueryAssist.ok, "discovery query assist should pass");
+assert(
+  discoveryQueryAssist.data?.suggestions.capabilityTags[0]?.value === "protocol.mcp",
+  "discovery query capability suggestion mismatch",
 );
 
 console.log("oan-community-skill tests passed");
