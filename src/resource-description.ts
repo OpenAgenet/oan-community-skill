@@ -7,8 +7,11 @@ import { createHash } from "node:crypto";
 import {
   createAgentIdentityNode,
   ensureSubjectIdentityNode,
+  loadIdentityStoreSnapshot,
+  saveIdentityStoreSnapshot,
 } from "../../oan-sdk-ts/packages/sdk-ts/src/identity-store-node.js";
 import { createRegistrationSubmissionFromIdentity } from "../../oan-sdk-ts/packages/sdk-ts/src/identity.js";
+import type { OanIdentityRecord } from "../../oan-sdk-ts/packages/sdk-ts/src/identity.js";
 import type {
   ImplementationLink,
   ProtocolBinding,
@@ -250,18 +253,20 @@ async function createSubmission(
     label: input.subjectLabel ?? "OAN Community Publisher",
     identityDir: input.identityDir,
   });
-  const agent = await createAgentIdentityNode({
-    label: candidate.name,
-    resourceType: candidate.resourceType,
-    ownerSubjectDid: subject.record.did,
-    identityDir: subject.identityDir,
-    description: candidate.description,
-    capabilityTags: candidate.capabilityTags,
-    authorizedDomains: candidate.authorizedDomains,
-    serviceEndpoint: candidate.endpoint,
-    manifestUrl: candidate.manifestUrl,
-    schemaUrl: candidate.schemaUrl,
-  });
+  const agent = input.reuseAgentIdentity
+    ? await ensureReusableAgentIdentity(candidate, subject.record.did, subject.identityDir)
+    : await createAgentIdentityNode({
+        label: candidate.name,
+        resourceType: candidate.resourceType,
+        ownerSubjectDid: subject.record.did,
+        identityDir: subject.identityDir,
+        description: candidate.description,
+        capabilityTags: candidate.capabilityTags,
+        authorizedDomains: candidate.authorizedDomains,
+        serviceEndpoint: candidate.endpoint,
+        manifestUrl: candidate.manifestUrl,
+        schemaUrl: candidate.schemaUrl,
+      });
   const submission = createRegistrationSubmissionFromIdentity(agent.record, {
     endpoint: candidate.endpoint,
     manifestUrl: candidate.manifestUrl,
@@ -274,6 +279,53 @@ async function createSubmission(
   });
   enrichSubmission(submission, candidate);
   return submission;
+}
+
+async function ensureReusableAgentIdentity(
+  candidate: ResourceDescriptionRegistrationCandidate,
+  ownerSubjectDid: string,
+  identityDir: string,
+): Promise<{ record: OanIdentityRecord; identityDir: string }> {
+  const snapshot = await loadIdentityStoreSnapshot(identityDir);
+  const existing =
+    snapshot.agents.find((record) => record.id === snapshot.defaultAgentId) ??
+    snapshot.agents.find((record) => record.profile.resourceType === candidate.resourceType);
+  if (!existing) {
+    return createAgentIdentityNode({
+      label: candidate.name,
+      resourceType: candidate.resourceType,
+      ownerSubjectDid,
+      identityDir,
+      description: candidate.description,
+      capabilityTags: candidate.capabilityTags,
+      authorizedDomains: candidate.authorizedDomains,
+      serviceEndpoint: candidate.endpoint,
+      manifestUrl: candidate.manifestUrl,
+      schemaUrl: candidate.schemaUrl,
+    });
+  }
+  existing.profile = {
+    ...existing.profile,
+    label: candidate.name,
+    description: candidate.description,
+    capabilityTags: candidate.capabilityTags,
+    authorizedDomains: candidate.authorizedDomains,
+  };
+  existing.didDocument.oanMetadata = {
+    ...(existing.didDocument.oanMetadata ?? {}),
+    subjectType: existing.didDocument.oanMetadata?.subjectType ?? candidate.resourceType,
+    resourceType: existing.didDocument.oanMetadata?.resourceType ?? candidate.resourceType,
+    resourceDescription: {
+      ...(existing.didDocument.oanMetadata?.resourceDescription ?? {}),
+      name: candidate.name,
+      description: candidate.description,
+      capabilityTags: candidate.capabilityTags,
+    },
+    capabilityTags: candidate.capabilityTags,
+    authorizedDomains: candidate.authorizedDomains,
+  };
+  await saveIdentityStoreSnapshot(snapshot, identityDir);
+  return { record: existing, identityDir };
 }
 
 function enrichSubmission(

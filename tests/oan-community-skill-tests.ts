@@ -732,6 +732,29 @@ try {
   await rm(npmMcpIdentityDir, { recursive: true, force: true });
 }
 
+const versionedMcpIdentityDir = await mkdtemp(join(tmpdir(), "oan-community-versioned-mcp-test-"));
+try {
+  const firstVersion = await descriptionSkill.draftRegistrationFromResourceDescription({
+    markdown: npmMcpMarkdown,
+    identityDir: versionedMcpIdentityDir,
+    reuseAgentIdentity: true,
+  });
+  const secondVersion = await descriptionSkill.draftRegistrationFromResourceDescription({
+    markdown: npmMcpMarkdown.replaceAll("0.6.11", "0.6.12"),
+    identityDir: versionedMcpIdentityDir,
+    reuseAgentIdentity: true,
+  });
+  assert(firstVersion.ok && secondVersion.ok, "versioned MCP drafts should pass");
+  assert(
+    firstVersion.data?.submission?.resourceDid === secondVersion.data?.submission?.resourceDid,
+    "versioned MCP drafts should reuse one resource DID",
+  );
+  assert(firstVersion.data?.submission?.packageVersion === "0.6.11", "first MCP packageVersion mismatch");
+  assert(secondVersion.data?.submission?.packageVersion === "0.6.12", "second MCP packageVersion mismatch");
+} finally {
+  await rm(versionedMcpIdentityDir, { recursive: true, force: true });
+}
+
 const freeTextDraft = await descriptionSkill.draftRegistrationFromResourceDescription({
   text: "Weather assistant API: answers weather questions from a public HTTPS endpoint.",
   overrides: {

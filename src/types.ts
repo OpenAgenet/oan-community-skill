@@ -204,6 +204,7 @@ export interface ResourceDescriptionRegistrationInput {
   subjectLabel?: string;
   subjectIdentityId?: string;
   agentIdentityId?: string;
+  reuseAgentIdentity?: boolean;
   sourceName?: string;
   sourceUrl?: string;
   overrides?: Partial<ResourceDescriptionRegistrationCandidate>;
