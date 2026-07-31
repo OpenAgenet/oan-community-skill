@@ -663,11 +663,18 @@ function expansionSentences(candidate: ResourceDescriptionRegistrationCandidate)
 }
 
 function extractReadableSentences(markdown: string): string[] {
-  const text = markdown
-    .split(/\r?\n/)
-    .map((line) => line.trim().replace(/^>\s*/, ""))
-    .filter((line) => line && !line.startsWith("#") && !line.startsWith("|") && !line.startsWith("-"))
-    .join(" ");
+  const lines: string[] = [];
+  let inFence = false;
+  for (const rawLine of markdown.split(/\r?\n/)) {
+    const line = rawLine.trim().replace(/^>\s*/, "");
+    if (line.startsWith("```")) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence || !line || line.startsWith("#") || line.startsWith("|") || line.startsWith("-")) continue;
+    lines.push(line);
+  }
+  const text = lines.join(" ");
   return splitSentences(text).filter((sentence) => countWords(sentence) >= 6);
 }
 

@@ -659,6 +659,79 @@ try {
   await rm(huggingFaceIdentityDir, { recursive: true, force: true });
 }
 
+const npmMcpMarkdown = `# @transcend-io/mcp
+
+Transcend MCP Server - unified server with all domain tools.
+
+## Suggested OAN Registration Metadata
+
+| Field | Suggested value | Notes |
+| --- | --- | --- |
+| resourceType | \`mcp_server\` | OAN resource category inferred from the source. |
+| name | \`@transcend-io/mcp\` | Human-readable resource name. |
+| version | \`0.6.11\` | Observed upstream version. |
+| endpoint | \`stdio://npm/@transcend-io/mcp\` | Logical launch endpoint. |
+| protocol | \`mcp/stdio\` | Protocol or access model. |
+| schemaUrl | \`https://www.npmjs.com/package/@transcend-io/mcp\` | Descriptor URL. |
+| downloadUrl | \`https://www.npmjs.com/package/@transcend-io/mcp\` | Package page. |
+| repositoryUrl | \`https://github.com/transcend-io/tools\` | Source repository. |
+| packageUrl | \`https://www.npmjs.com/package/@transcend-io/mcp\` | Package registry page. |
+| authorizedDomains | \`technology.software_engineering\` | Registrar domain. |
+| capabilityTags | \`mcp-server; transcend-io; mcp; unified; domain; tools\` | Discovery tags. |
+| useCases | \`Connect an agent runtime to @transcend-io/mcp; Test resource discovery and integration metadata\` | Use cases. |
+| inputs | \`MCP tool call arguments; User task context\` | Inputs. |
+| outputs | \`MCP tool result; Structured or text response\` | Outputs. |
+| license | \`Apache-2.0\` | License. |
+| maintainer | \`cami-transcend, michaelfarrell76\` | Maintainer. |
+
+Suggested registration description:
+
+> Transcend MCP Server - unified server with all domain tools.
+
+## How To Use After Discovery
+
+1. Inspect the OAN candidate and copy the resource DID.
+2. Open the DID Document or ResourcePackage details.
+3. Confirm that the resource type, endpoint, and protocol match the intended use.
+4. Review the upstream repository, package page, or catalog page.
+5. Check license, runtime permissions, credentials, and data handling requirements.
+6. Install, call, or adapt the resource only after reviewing upstream usage instructions.
+
+Expected user outcome: the user can understand what the resource does, where the original material is hosted, how it is normally accessed, and what information should be checked before use.
+
+## Observed Source Metadata Snapshot
+
+\`\`\`json
+{
+  "downloads": {
+    "monthly": 222738,
+    "weekly": 11796
+  },
+  "package": {
+    "name": "@transcend-io/mcp",
+    "description": "Transcend MCP Server - unified server with all domain tools.",
+    "publisher": {
+      "email": "npm-oidc-no-reply@github.com"
+    }
+  }
+}
+\`\`\`
+`;
+const npmMcpIdentityDir = await mkdtemp(join(tmpdir(), "oan-community-npm-mcp-test-"));
+try {
+  const draft = await descriptionSkill.draftRegistrationFromResourceDescription({
+    markdown: npmMcpMarkdown,
+    identityDir: npmMcpIdentityDir,
+  });
+  assert(draft.ok, "npm MCP markdown should produce a complete draft");
+  const description = draft.data?.candidate.description ?? "";
+  assert(wordCount(description) >= 200 && wordCount(description) <= 400, "npm MCP description should be 200-400 words");
+  assert(!description.includes('"downloads"'), "npm MCP description should not include JSON snapshot fields");
+  assert(!description.includes('"publisher"'), "npm MCP description should not include JSON snapshot objects");
+} finally {
+  await rm(npmMcpIdentityDir, { recursive: true, force: true });
+}
+
 const freeTextDraft = await descriptionSkill.draftRegistrationFromResourceDescription({
   text: "Weather assistant API: answers weather questions from a public HTTPS endpoint.",
   overrides: {
