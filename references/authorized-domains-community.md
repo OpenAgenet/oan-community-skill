@@ -12,6 +12,10 @@ Use this reference for community-facing registration and Discovery tasks.
 - `["*"]` means all-domain resource scope. Use it only when the selected
   Registrar or user policy intentionally classifies the resource as all-domain.
 - Concrete domains must be sorted, unique, and not mixed with `*`.
+- Concrete domains must be canonical machine identifiers from the Registrar's
+  domain set. Keep Chinese or mixed-language material in resource descriptions,
+  examples, use cases, or supplemental capability tags, not in
+  `authorizedDomains`.
 - Parent domains may cover child domains. If a Registrar is authorized for a
   parent domain, it may accept resources in covered child domains according to
   the active OAN service policy.

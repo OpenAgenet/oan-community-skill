@@ -132,6 +132,15 @@ or interface, inputs, outputs, and typical use cases. Short one-line
 descriptions are reported as quality issues even when the minimum registration
 fields are present.
 
+Chinese and English resources follow the same registration model. Put Chinese
+natural-language material in `description`, `capabilityDescription`,
+`useCaseExamples`, `examples`, `inputs`, and `outputs`. Prefer canonical
+English `capabilityTags`, but Chinese capability terms are allowed as
+supplemental Discovery hints when no suitable canonical tag exists.
+`authorizedDomains` must remain canonical Registrar domain identifiers, for
+example `technology.software_engineering` or `legal.contract_law`; do not use
+Chinese phrases as authorization domains.
+
 If another agent or third-party user only has this skill and a folder of
 resource description files, the files should carry at least:
 
@@ -156,7 +165,8 @@ Default community posture:
 - keep private keys local
 - treat assisted suggestions as editable user help: `authorizedDomains` must
   stay valid for the selected Registrar, while `capabilityTags` can be edited,
-  removed, or extended
+  removed, or extended, including with Chinese capability terms when they are
+  useful supplemental Discovery signals
 - treat Root and CDN as lifecycle inspection surfaces, not ordinary user
   operation surfaces
 - do not start a full local Root/Registrar/Discovery/CDN/NATS topology

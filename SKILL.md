@@ -134,6 +134,17 @@ Cover the resource purpose, public access path, protocol or interface, inputs,
 outputs, and typical use cases. Treat one-sentence descriptions as quality
 issues and ask the user or source collector to expand them.
 
+Support Chinese and English resources with a strict field boundary. Natural
+language fields such as `description`, `capabilityDescription`,
+`useCaseExamples`, `examples`, `inputs`, and `outputs` may contain Chinese,
+English, or mixed-language text. `capabilityTags` should prefer canonical
+English tags from the capability vocabulary, but Chinese capability terms are
+allowed as supplemental Discovery signals when no suitable canonical tag is
+available. `authorizedDomains` must stay in the selected Registrar's canonical
+domain set, normally lowercase ASCII identifiers such as
+`technology.software_engineering` or `legal.contract_law`; never translate
+them into Chinese or use Chinese phrases as authorization scope.
+
 When only this skill and a folder of batch description files are available, the
 description files must be sufficient for registration and post-registration
 checking. They should include name, resource type, public access URL, explicit
@@ -178,6 +189,9 @@ authorization field, separate from `capabilityTags`.
   the selected Registrar or workflow.
 - Use concrete canonical domains when the product belongs to a known domain,
   and keep them sorted and unique.
+- Keep authorized-domain values canonical and machine-readable; do not use
+  Chinese, free-form natural-language phrases, endpoint hostnames, or
+  capability-tag-like values as `authorizedDomains`.
 - Leave domain selection to the user or Registrar when the community workflow
   cannot determine it safely, but do not submit a final registration until the
   Registrar/user workflow has written explicit domains.

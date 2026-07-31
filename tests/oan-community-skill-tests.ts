@@ -321,6 +321,14 @@ function wordCount(value: string | undefined): number {
   return (value ?? "").split(/\s+/).filter(Boolean).length;
 }
 
+function descriptionUnitCount(value: string | undefined): number {
+  const text = value ?? "";
+  if (/[\u3400-\u9fff]/u.test(text)) {
+    return Array.from(text).filter((char) => /[\u3400-\u9fffA-Za-z0-9]/u.test(char)).length;
+  }
+  return wordCount(text);
+}
+
 const defaultProfile = createDefaultProfile();
 assert(
   defaultProfile.baseUrl === DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS.baseUrl,
@@ -639,8 +647,8 @@ try {
   assert(draft.data?.candidate.resourceType === "agent_service", "HuggingFace type parse mismatch");
   assert(draft.data?.candidate.protocol === "huggingface-space/gradio", "HuggingFace protocol parse mismatch");
   assert(draft.data?.submission?.resourceDid.startsWith("did:oan:AG"), "agent_service draft should use AG DID subject code");
-  const candidateDescriptionWordCount = wordCount(draft.data?.candidate.description);
-  const submissionDescriptionWordCount = wordCount(
+  const candidateDescriptionWordCount = descriptionUnitCount(draft.data?.candidate.description);
+  const submissionDescriptionWordCount = descriptionUnitCount(
     draft.data?.submission?.didDocument.oanMetadata?.resourceDescription?.description,
   );
   assert(
@@ -655,8 +663,65 @@ try {
     !(draft.data?.qualityIssues ?? []).includes("description_too_short_for_registration"),
     "expanded HuggingFace description should not keep the short-description quality issue",
   );
+  assert(
+    !/\bOAN\b|\bDID\b|\bDiscovery\b|registered as|upstream discovery source/i.test(
+      draft.data?.candidate.description ?? "",
+    ),
+    "expanded HuggingFace description should stay focused on the resource itself",
+  );
 } finally {
   await rm(huggingFaceIdentityDir, { recursive: true, force: true });
+}
+
+const surveyReportMarkdown = `# 纳米AI
+
+纳米AI 是从《联网智能体数量摸底情况报告》附表中整理出的公开候选智能体服务。
+
+## Suggested OAN Registration Metadata
+
+| Field | Suggested value | Notes |
+| --- | --- | --- |
+| resourceType | \`agent_service\` | OAN resource category inferred from the source. |
+| name | \`纳米AI\` | Human-readable resource name. |
+| version | \`1.0.0\` | Observed upstream version. |
+| endpoint | \`https://sj.qq.com/appdetail/com.qihoo.namiso\` | Homepage. |
+| protocol | \`android-app-store\` | Access model. |
+| authorizedDomains | \`knowledge.search\` | Registrar domain. |
+| capabilityTags | \`agent-service; app; ppt; mcp\` | Discovery tags. |
+| useCases | \`生成视频、报告和PPT; 使用多智能体能力处理检索与内容创作任务\` | Use cases. |
+| inputs | \`用户提示词; 内容创作需求; 可选素材\` | Inputs. |
+| outputs | \`生成的视频、报告或PPT; 搜索与创作结果\` | Outputs. |
+| maintainer | \`天津三六零快看科技有限公司\` | Maintainer. |
+
+Suggested registration description:
+
+> 纳米AI 是一项面向搜索、问答和内容创作场景的智能体服务。
+`;
+const surveyReportIdentityDir = await mkdtemp(join(tmpdir(), "oan-community-survey-test-"));
+try {
+  const draft = await descriptionSkill.draftRegistrationFromResourceDescription({
+    markdown: surveyReportMarkdown,
+    identityDir: surveyReportIdentityDir,
+  });
+  assert(draft.ok, "survey markdown should produce a complete draft");
+  assert(
+    !/联网智能体数量摸底情况报告|\bOAN\b|\bDID\b|\bDiscovery\b|注册审查|registered as|upstream discovery source/i.test(
+      draft.data?.candidate.description ?? "",
+    ),
+    "survey description expansion should not inject registration or report context",
+  );
+  assert(
+    !/联网智能体数量摸底情况报告|\bOAN\b|\bDID\b|\bDiscovery\b|注册审查|registered as|upstream discovery source/i.test(
+      String(draft.data?.submission?.didDocument.oanMetadata?.resourceDescription?.capabilityDescription ?? ""),
+    ),
+    "survey capability description should stay focused on the resource itself",
+  );
+  assert(
+    !draft.data?.qualityIssues?.includes("description_too_short_for_registration"),
+    "survey description should be expanded to the required length",
+  );
+} finally {
+  await rm(surveyReportIdentityDir, { recursive: true, force: true });
 }
 
 const npmMcpMarkdown = `# @transcend-io/mcp
@@ -725,7 +790,10 @@ try {
   });
   assert(draft.ok, "npm MCP markdown should produce a complete draft");
   const description = draft.data?.candidate.description ?? "";
-  assert(wordCount(description) >= 200 && wordCount(description) <= 400, "npm MCP description should be 200-400 words");
+  assert(
+    descriptionUnitCount(description) >= 200 && descriptionUnitCount(description) <= 400,
+    "npm MCP description should be 200-400 words",
+  );
   assert(!description.includes('"downloads"'), "npm MCP description should not include JSON snapshot fields");
   assert(!description.includes('"publisher"'), "npm MCP description should not include JSON snapshot objects");
 } finally {
@@ -770,13 +838,65 @@ assert(
 );
 
 assert(
-  wordCount(freeTextDraft.data?.candidate.description) >= 200 &&
-    wordCount(freeTextDraft.data?.candidate.description) <= 400,
+  descriptionUnitCount(freeTextDraft.data?.candidate.description) >= 200 &&
+    descriptionUnitCount(freeTextDraft.data?.candidate.description) <= 400,
   "short free text description should be expanded before reporting quality issues",
 );
 assert(
   !freeTextDraft.data?.qualityIssues?.includes("description_too_short_for_registration"),
   "expanded free text description should not be reported as too short",
+);
+
+const chineseDescription =
+  "中文合同审查技能用于帮助智能体工作流处理采购合同、服务协议和合作协议中的常见风险点。它可以根据用户提供的合同文本、审查要求和关注条款，整理付款、交付、违约责任、保密义务、争议解决、自动续约和终止条件等内容，并输出便于人工复核的结构化摘要。该资源适合在企业法务、采购协同和项目管理场景中作为辅助检查工具使用，不能替代律师意见。注册信息会保留公开访问地址、接口协议、输入输出说明和典型使用场景，便于发现节点根据中文任务描述召回资源，也便于用户在查看 DID 文档后判断是否值得进一步访问。";
+const chineseDraft = await descriptionSkill.draftRegistrationFromResourceDescription({
+  text: chineseDescription,
+  overrides: {
+    resourceType: "skill",
+    name: "中文合同审查技能",
+    endpoint: "https://example.org/skills/chinese-contract-review.json",
+    authorizedDomains: ["legal.contract_law"],
+    capabilityTags: ["legal.contract.review", "合同审查"],
+    useCases: ["审查采购合同风险", "整理合同条款摘要"],
+    inputs: ["合同文本", "审查规则"],
+    outputs: ["风险摘要", "条款建议"],
+  },
+});
+assert(chineseDraft.ok, "Chinese natural-language resource description should produce a complete draft");
+assert(
+  !chineseDraft.data?.qualityIssues?.includes("description_too_short_for_registration"),
+  "200-400 Chinese characters should not be treated as a short English description",
+);
+assert(
+  chineseDraft.data?.qualityIssues?.includes("capability_tags_contain_chinese_terms"),
+  "Chinese capability tags should be allowed but reported for review",
+);
+
+const invalidChineseDomainDraft = await descriptionSkill.draftRegistrationFromResourceDescription({
+  text: chineseDescription,
+  overrides: {
+    resourceType: "skill",
+    name: "中文合同审查技能",
+    endpoint: "https://example.org/skills/chinese-contract-review.json",
+    authorizedDomains: ["法律"],
+    capabilityTags: ["legal.contract.review"],
+  },
+});
+assert(invalidChineseDomainDraft.ok, "draft generation can expose invalid domains to final validation");
+const invalidChineseDomainRegistration = await descriptionSkill.registerFromResourceDescription({
+  text: chineseDescription,
+  overrides: {
+    resourceType: "skill",
+    name: "中文合同审查技能",
+    endpoint: "https://example.org/skills/chinese-contract-review.json",
+    authorizedDomains: ["法律"],
+    capabilityTags: ["legal.contract.review"],
+  },
+});
+assert(!invalidChineseDomainRegistration.ok, "Chinese authorizedDomains should fail registration validation");
+assert(
+  invalidChineseDomainRegistration.errorMessage === "invalid_authorized_domains",
+  "Chinese authorizedDomains should report invalid_authorized_domains",
 );
 
 const batchIdentityDir = await mkdtemp(join(tmpdir(), "oan-community-batch-test-"));

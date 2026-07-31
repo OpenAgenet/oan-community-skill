@@ -242,6 +242,7 @@ export function parseResourceDescription(
   return normalizeCandidate({
     ...candidate,
     description: registrationDescriptionFromResourceMaterial(candidate, body),
+    capabilityDescription: candidate.capabilityDescription ?? capabilityDescriptionFromCandidate(candidate),
   });
 }
 
@@ -319,6 +320,7 @@ async function ensureReusableAgentIdentity(
       ...(existing.didDocument.oanMetadata?.resourceDescription ?? {}),
       name: candidate.name,
       description: candidate.description,
+      capabilityDescription: candidate.capabilityDescription,
       capabilityTags: candidate.capabilityTags,
     },
     capabilityTags: candidate.capabilityTags,
@@ -338,6 +340,7 @@ function enrichSubmission(
     ...metadata.resourceDescription,
     name: candidate.name,
     description: candidate.description,
+    capabilityDescription: candidate.capabilityDescription,
     capabilityTags: candidate.capabilityTags,
     useCaseExamples: candidate.useCases,
     inputs: candidate.inputs,
@@ -420,6 +423,7 @@ function normalizeCandidate(
     ...candidate,
     name: cleanupText(candidate.name),
     description: cleanupText(candidate.description),
+    capabilityDescription: cleanupOptional(candidate.capabilityDescription),
     version: cleanupText(candidate.version || "1.0.0"),
     endpoint: usefulUrl(candidate.endpoint),
     manifestUrl: usefulUrl(candidate.manifestUrl),
@@ -461,6 +465,9 @@ function findQualityIssues(candidate: ResourceDescriptionRegistrationCandidate):
   if (!candidate.useCases.length) issues.push("use_cases_empty");
   if (!candidate.inputs.length) issues.push("inputs_empty");
   if (!candidate.outputs.length) issues.push("outputs_empty");
+  if (candidate.capabilityTags.some(hasCjkText)) {
+    issues.push("capability_tags_contain_chinese_terms");
+  }
   return issues;
 }
 
@@ -573,6 +580,9 @@ function suggestedNextActions(missingInputs: string[], qualityIssues: string[] =
   if (qualityIssues.includes("description_too_long_for_registration")) {
     actions.push("Shorten the resource description to a concise 200-400 word registration summary.");
   }
+  if (qualityIssues.includes("capability_tags_contain_chinese_terms")) {
+    actions.push("Chinese capability tags are allowed but should be reviewed; prefer canonical English tags when suitable equivalents exist.");
+  }
   return actions;
 }
 
@@ -631,10 +641,19 @@ function registrationDescriptionFromResourceMaterial(
 ): string {
   const original = cleanupText(candidate.description);
   if (!original) return original;
-  if (!descriptionTooShort(original) && !descriptionTooLong(original)) return original;
+  const originalSentences = splitSentences(original).filter((sentence) => !containsRegistrationContext(sentence));
+  const resourceCentricOriginal = cleanupText(originalSentences.join(" "));
+  const baseDescription = resourceCentricOriginal || original;
+  if (
+    !containsRegistrationContext(original) &&
+    !descriptionTooShort(baseDescription) &&
+    !descriptionTooLong(baseDescription)
+  ) {
+    return baseDescription;
+  }
 
   const sentences = unique([
-    ...splitSentences(original),
+    ...splitSentences(baseDescription).filter((sentence) => !containsRegistrationContext(sentence)),
     ...resourceFactSentences(candidate),
     ...extractReadableSentences(markdown),
   ]);
@@ -652,27 +671,17 @@ function registrationDescriptionFromResourceMaterial(
 
 function resourceFactSentences(candidate: ResourceDescriptionRegistrationCandidate): string[] {
   const sentences: string[] = [];
-  sentences.push(`${candidate.name} is registered as an OAN ${candidate.resourceType} resource.`);
+  sentences.push(`${candidate.name} is a ${readableResourceType(candidate.resourceType)}.`);
   if (candidate.endpoint) {
-    sentences.push(`The primary public access endpoint for this resource is ${candidate.endpoint}.`);
+    sentences.push(`The primary public access endpoint is ${candidate.endpoint}.`);
   }
   if (candidate.protocol) {
     sentences.push(`The declared protocol or access model is ${candidate.protocol}.`);
   }
-  if (candidate.sourceName || candidate.sourceUrl) {
-    sentences.push(
-      `The available source material identifies ${
-        candidate.sourceName ? candidate.sourceName : "the provided source"
-      }${candidate.sourceUrl ? ` at ${candidate.sourceUrl}` : ""} as the upstream discovery source.`,
-    );
-  }
-  if (candidate.packageUrl) sentences.push(`The catalog or package page is ${candidate.packageUrl}.`);
-  if (candidate.repositoryUrl) sentences.push(`The repository link recorded for the resource is ${candidate.repositoryUrl}.`);
-  if (candidate.manifestUrl) sentences.push(`The manifest or descriptor URL recorded for the resource is ${candidate.manifestUrl}.`);
-  if (candidate.downloadUrl) sentences.push(`The download or access URL recorded for the resource is ${candidate.downloadUrl}.`);
-  if (candidate.authorizedDomains.length) {
-    sentences.push(`The resource is associated with the authorized OAN domain ${candidate.authorizedDomains.join(", ")}.`);
-  }
+  if (candidate.packageUrl) sentences.push(`The package or catalog page is ${candidate.packageUrl}.`);
+  if (candidate.repositoryUrl) sentences.push(`The repository link is ${candidate.repositoryUrl}.`);
+  if (candidate.manifestUrl) sentences.push(`The manifest or descriptor URL is ${candidate.manifestUrl}.`);
+  if (candidate.downloadUrl) sentences.push(`The download or access URL is ${candidate.downloadUrl}.`);
   if (candidate.capabilityTags.length) {
     sentences.push(`Its capability tags are ${candidate.capabilityTags.join(", ")}.`);
   }
@@ -694,24 +703,43 @@ function resourceFactSentences(candidate: ResourceDescriptionRegistrationCandida
 function expansionSentences(candidate: ResourceDescriptionRegistrationCandidate): string[] {
   const access = candidate.endpoint ?? candidate.manifestUrl ?? candidate.downloadUrl ?? candidate.packageUrl;
   return [
-    `${candidate.name} should be discovered by users who need a resource matching the documented metadata rather than by users looking for an unrelated local package or private integration.`,
+    `${candidate.name} is intended for users who need the capabilities described by its metadata, access model, input fields, output fields, and examples.`,
     access
-      ? `Because the registration points to ${access}, callers and reviewers can use that public location as the starting point for evaluating availability, interface behavior, and compatibility with their own workflow.`
-      : `Because the registration material does not provide additional private deployment facts, callers and reviewers should rely on the public access information recorded in the DID document.`,
+      ? `The public access location ${access} is the starting point for evaluating availability, interface behavior, supported platforms, and compatibility with a user's workflow.`
+      : `The available material does not provide an additional public endpoint, so the description stays limited to the named service, access model, and documented behavior.`,
     candidate.inputs.length
-      ? `The input fields named in the source material define the information a user or automation is expected to provide before invoking or evaluating the resource.`
-      : `The source material does not describe additional custom input fields beyond the general interaction implied by the resource type and access protocol.`,
+      ? `The named input fields describe the information a user or automation is expected to provide before invoking or evaluating the service.`
+      : `The available material does not describe additional custom input fields beyond the general interaction implied by the service type and access protocol.`,
     candidate.outputs.length
-      ? `The output fields named in the source material define the response a user should expect after the service, skill, server, or API completes its documented action.`
-      : `The source material does not describe additional custom output fields beyond the general response implied by the resource type and access protocol.`,
+      ? `The named output fields describe the response a user should expect after the service, skill, server, or API completes its documented action.`
+      : `The available material does not describe additional custom output fields beyond the general response implied by the service type and access protocol.`,
     candidate.useCases.length
-      ? `The use cases are preserved in the registration description so Discovery results can explain why the resource may be relevant before a user opens the upstream page.`
+      ? `The use cases explain when the service is likely to be useful and what tasks it can support.`
       : `The description stays within the known metadata and does not infer use cases that were not present in the resource material.`,
     candidate.capabilityTags.length
-      ? `The capability tags provide compact indexing hints, while this description expands those same hints into readable context for review, selection, and post-registration checks.`
+      ? `The capability tags provide compact labels, while this description expands those labels into readable context for review and selection.`
       : `The description avoids adding capability claims that are not supported by the resource material.`,
-    `This registration description is intentionally limited to facts found in the resource document, parsed metadata table, public access links, and explicit overrides supplied to the community skill.`,
+    `This description is intentionally limited to facts found in the resource document, parsed metadata table, public access links, and explicit overrides supplied by the operator.`,
+    `Users should still validate availability, permissions, data handling, pricing, and operational fit against the service's public documentation before relying on it in a workflow.`,
   ];
+}
+
+function capabilityDescriptionFromCandidate(candidate: ResourceDescriptionRegistrationCandidate): string | undefined {
+  const parts: string[] = [];
+  if (candidate.capabilityTags.length) {
+    parts.push(`${candidate.name} exposes capabilities labeled ${candidate.capabilityTags.join(", ")}.`);
+  }
+  if (candidate.inputs.length) {
+    parts.push(`It accepts ${candidate.inputs.join("; ")} as typical inputs.`);
+  }
+  if (candidate.outputs.length) {
+    parts.push(`It returns ${candidate.outputs.join("; ")} as typical outputs.`);
+  }
+  if (candidate.useCases.length) {
+    parts.push(`It is suitable for ${candidate.useCases.join("; ")}.`);
+  }
+  const description = cleanupText(parts.join(" "));
+  return description ? trimDescriptionToWordLimit(description, 120) : undefined;
 }
 
 function extractReadableSentences(markdown: string): string[] {
@@ -727,17 +755,29 @@ function extractReadableSentences(markdown: string): string[] {
     lines.push(line);
   }
   const text = lines.join(" ");
-  return splitSentences(text).filter((sentence) => countWords(sentence) >= 6);
+  return splitSentences(text).filter((sentence) => countWords(sentence) >= 6 && !containsRegistrationContext(sentence));
+}
+
+function readableResourceType(resourceType: CommunityRegistrableResourceType): string {
+  if (resourceType === "agent_service") return "public agent service";
+  if (resourceType === "mcp_server") return "MCP server";
+  if (resourceType === "tool_api") return "tool API";
+  return "skill";
+}
+
+function containsRegistrationContext(value: string): boolean {
+  return /\bOAN\b|\bDID\b|\bDiscovery\b|联网智能体数量摸底情况报告|注册审查|registered as|upstream discovery source/i.test(value);
 }
 
 function splitSentences(value: string): string[] {
   return cleanupText(value)
-    .split(/(?<=[.!?])\s+/)
+    .split(/(?<=[.!?。！？])\s*/)
     .map((sentence) => cleanupText(sentence))
     .filter(Boolean);
 }
 
 function trimDescriptionToWordLimit(value: string, limit: number): string {
+  if (hasCjkText(value)) return trimCjkDescriptionToLimit(value, limit);
   const words = cleanupText(value).split(/\s+/).filter(Boolean);
   if (words.length <= limit) return cleanupText(value);
   return `${words.slice(0, limit).join(" ").replace(/[,\s]+$/, "")}.`;
@@ -745,16 +785,38 @@ function trimDescriptionToWordLimit(value: string, limit: number): string {
 
 function descriptionTooShort(value: string): boolean {
   const cleaned = cleanupText(value);
+  if (hasCjkText(cleaned)) return countCjkDescriptionUnits(cleaned) < 200;
   return countWords(cleaned) < 200;
 }
 
 function descriptionTooLong(value: string): boolean {
   const cleaned = cleanupText(value);
+  if (hasCjkText(cleaned)) return countCjkDescriptionUnits(cleaned) > 400;
   return countWords(cleaned) > 400;
 }
 
 function countWords(value: string): number {
   return value.split(/\s+/).filter(Boolean).length;
+}
+
+function hasCjkText(value: string): boolean {
+  return /[\u3400-\u9fff]/u.test(value);
+}
+
+function countCjkDescriptionUnits(value: string): number {
+  return Array.from(value).filter((char) => /[\u3400-\u9fffA-Za-z0-9]/u.test(char)).length;
+}
+
+function trimCjkDescriptionToLimit(value: string, limit: number): string {
+  const cleaned = cleanupText(value);
+  let units = 0;
+  let output = "";
+  for (const char of Array.from(cleaned)) {
+    if (/[\u3400-\u9fffA-Za-z0-9]/u.test(char)) units += 1;
+    if (units > limit) break;
+    output += char;
+  }
+  return output.trim().replace(/[，,；;\s]+$/, "") + (output.trim().endsWith("。") ? "" : "。");
 }
 
 function hashJson(value: unknown): string {

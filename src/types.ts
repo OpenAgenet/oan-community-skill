@@ -180,6 +180,7 @@ export interface ResourceDescriptionRegistrationCandidate {
   resourceType: CommunityRegistrableResourceType;
   name: string;
   description: string;
+  capabilityDescription?: string;
   version: string;
   endpoint?: string;
   protocol?: string;

@@ -166,6 +166,7 @@ export function validateCommunityAuthorizedDomains(
     if (
       domain.trim() !== domain ||
       domain.length === 0 ||
+      !/^[a-z0-9_.*]+$/.test(domain) ||
       domain.startsWith(".") ||
       domain.endsWith(".") ||
       domain.includes("..")
