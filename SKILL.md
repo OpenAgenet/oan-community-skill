@@ -18,6 +18,10 @@ Use this skill for:
 
 - validating a resource registration submission
 - creating or reusing local identity material for a resource owner
+- drafting registration material from a resource description file, harvested
+  resource markdown, or a third-party plain-text product description
+- batch-registering resource description files while skipping and recording
+  items that cannot be registered yet
 - registering `agent_service`, `skill`, `mcp_server`, or `tool_api` through a
   Registrar
 - querying Discovery, including semantic query explanations when available
@@ -46,9 +50,15 @@ defaults from the SDK's `DEFAULT_OAN_OFFICIAL_ENDPOINTS` through
 `DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS`, so future official IP/domain migration
 is centralized.
 
-- Base URL: `https://api.openagenet.xyz`
+- Base URL: `https://www.openagenet.xyz`
 - Homepage: `https://openagenet.xyz`
 - Homepage API: `https://api.openagenet.xyz`
+
+Use the public website gateway for community registration and Discovery
+scripts that need to work against the deployed official website. Keep the SDK's
+lower-level endpoint defaults as implementation references; this community
+skill should prefer the website gateway unless a user supplies third-party
+endpoints.
 
 Use `baseUrl` as the normal user-facing configuration. The SDK derives
 Registrar, Discovery, Root, and CDN calls from that base URL. If a user or
@@ -76,6 +86,67 @@ Assume these first-class resource forms:
 Reject unsupported resource forms unless the protocol types and live service
 surface have been intentionally extended.
 
+## Resource Description Registration
+
+When a user wants to register a resource from a README, harvested markdown file,
+catalog entry, or free-form resource description, use the resource-description
+workflow before asking them to write a DID document by hand.
+
+Prefer this sequence:
+
+1. Call `draftRegistrationFromResourceDescription()` with the markdown or text.
+2. Review the returned `candidate`, `missingInputs`, and `qualityIssues`.
+3. Ask the user or source-specific collector to fill missing facts through
+   `overrides`.
+4. Call `registerFromResourceDescription()` only after `authorizedDomains`,
+   public access URL, name, and description are present.
+
+For one resource, do not hide a failed registration attempt. Return or explain
+the failing stage, parsed candidate, missing inputs, quality issues, endpoint
+or Registrar error, and the exact facts needed for a retry. After the user
+provides those facts, retry by passing them through `overrides`.
+
+For batch resource onboarding, use `registerBatchFromResourceDescriptions()`.
+The batch workflow should continue after an item fails validation or is
+rejected by the Registrar. Record each item with its `id` or `sourcePath`,
+status, parsed candidate, missing inputs, quality issues, error message, and
+suggested next actions. Skip failed items in the current pass and leave them
+for targeted manual repair.
+
+The parser understands the cold-start markdown convention with
+`## Suggested OAN Registration Metadata`, including rows for `resourceType`,
+`name`, `version`, `endpoint`, `protocol`, `schemaUrl`, `downloadUrl`,
+`repositoryUrl`, `packageUrl`, `authorizedDomains`, `capabilityTags`,
+`useCases`, `inputs`, `outputs`, `license`, and `maintainer`. It also extracts
+basic source links from `## Source And Access`.
+
+For third-party owners who only have free text, keep the workflow explicit:
+derive a readable draft where possible, but use `overrides` for authoritative
+facts. Do not invent an endpoint, maintainer, license, or authorization domain.
+`authorizedDomains` are authorization scope, not search tags; they must remain
+valid for the selected Registrar. `capabilityTags`, use cases, inputs, and
+outputs are discovery metadata and can be edited by the resource owner.
+
+Registration descriptions should be long enough to help a Discovery user decide
+whether the resource is useful after reading the DID document. Prefer roughly
+200-400 English words, or 200-400 Chinese characters for Chinese material.
+Cover the resource purpose, public access path, protocol or interface, inputs,
+outputs, and typical use cases. Treat one-sentence descriptions as quality
+issues and ask the user or source collector to expand them.
+
+When only this skill and a folder of batch description files are available, the
+description files must be sufficient for registration and post-registration
+checking. They should include name, resource type, public access URL, explicit
+authorized domains, capability tags, use cases, inputs, outputs, license,
+maintainer, source URL, and version when known. Use `overrides` for any facts
+that are missing from the file but provided by the user.
+
+The generated submission should reuse the normal registration finalization
+path. It should preserve implementation links, protocol bindings, package
+information, resource description, capability tags, and authorized domains in
+the DID document metadata, then let the registration helper normalize hashes
+and proof fields before submission.
+
 ## Required Semantics
 
 Preserve these semantics:
@@ -88,6 +159,9 @@ Preserve these semantics:
 - protocol bindings must resolve to declared DID services when `serviceRef` is
   present
 - hash fields should use `algorithm:value` shape
+- registration helpers should finalize submissions before sending them:
+  normalize the Root-facing DID document subset, fill `didDocumentHash`,
+  `metadataHash`, `packageHash`, and attach subject-control proof material
 - `oanMetadata.authorizedDomains` should be explicit for registered resources
   when the Registrar or user workflow knows the intended authorization domain
 - private keys stay local; Registrar, Discovery, and homepage backends should
@@ -134,6 +208,7 @@ Read these files when changing package behavior:
 - `src/index.ts`
 - `src/validation.ts`
 - `src/registration.ts`
+- `src/resource-description.ts`
 - `src/discovery.ts`
 - `src/lifecycle.ts`
 - `src/capability-assist.ts`

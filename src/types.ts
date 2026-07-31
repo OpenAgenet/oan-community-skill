@@ -168,3 +168,101 @@ export interface DiscoveryQueryAssistInput extends DiscoverySuggestionInput {}
 export interface DiscoveryQueryAssistOutput {
   suggestions: DiscoverySuggestionResult;
 }
+
+export type CommunityRegistrableResourceType = Extract<
+  ResourceType,
+  "agent_service" | "skill" | "mcp_server" | "tool_api"
+>;
+
+export interface ResourceDescriptionRegistrationCandidate {
+  sourceName?: string;
+  sourceUrl?: string;
+  resourceType: CommunityRegistrableResourceType;
+  name: string;
+  description: string;
+  version: string;
+  endpoint?: string;
+  protocol?: string;
+  manifestUrl?: string;
+  schemaUrl?: string;
+  downloadUrl?: string;
+  repositoryUrl?: string;
+  packageUrl?: string;
+  authorizedDomains: string[];
+  capabilityTags: string[];
+  useCases: string[];
+  inputs: string[];
+  outputs: string[];
+  license?: string;
+  maintainer?: string;
+}
+
+export interface ResourceDescriptionRegistrationInput {
+  markdown?: string;
+  text?: string;
+  identityDir?: string;
+  subjectLabel?: string;
+  subjectIdentityId?: string;
+  agentIdentityId?: string;
+  sourceName?: string;
+  sourceUrl?: string;
+  overrides?: Partial<ResourceDescriptionRegistrationCandidate>;
+}
+
+export interface ResourceDescriptionDraftOutput {
+  candidate: ResourceDescriptionRegistrationCandidate;
+  submission?: ResourceRegistrationSubmission;
+  missingInputs?: string[];
+  qualityIssues?: string[];
+}
+
+export interface ResourceDescriptionRegistrationOutput {
+  candidate: ResourceDescriptionRegistrationCandidate;
+  registration?: RegistrationSkillOutput["registration"];
+  lifecycle?: RegistrationSkillOutput["lifecycle"];
+  subjectIdentity?: RegistrationSkillOutput["subjectIdentity"];
+  agentIdentity?: RegistrationSkillOutput["agentIdentity"];
+  missingInputs?: string[];
+  qualityIssues?: string[];
+}
+
+export interface ResourceDescriptionBatchItem {
+  id?: string;
+  sourcePath?: string;
+  markdown?: string;
+  text?: string;
+  sourceName?: string;
+  sourceUrl?: string;
+  overrides?: Partial<ResourceDescriptionRegistrationCandidate>;
+}
+
+export interface ResourceDescriptionBatchRegistrationInput {
+  items: ResourceDescriptionBatchItem[];
+  identityDir?: string;
+  subjectLabel?: string;
+  stopOnFailure?: boolean;
+}
+
+export interface ResourceDescriptionBatchItemResult {
+  id: string;
+  sourcePath?: string;
+  status: "registered" | "skipped" | "failed";
+  stage?: OanWorkflowStage;
+  resourceDid?: string;
+  candidate?: ResourceDescriptionRegistrationCandidate;
+  missingInputs?: string[];
+  qualityIssues?: string[];
+  errorCategory?: string;
+  errorMessage?: string;
+  suggestedNextActions?: string[];
+}
+
+export interface ResourceDescriptionBatchRegistrationOutput {
+  summary: {
+    total: number;
+    registered: number;
+    skipped: number;
+    failed: number;
+  };
+  results: ResourceDescriptionBatchItemResult[];
+}

@@ -7,7 +7,7 @@ import type { OanSkillProfile } from "./types.js";
 import { DEFAULT_OAN_OFFICIAL_ENDPOINTS } from "../../oan-sdk-ts/packages/client-ts/src/index.js";
 
 export const DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS = {
-  baseUrl: DEFAULT_OAN_OFFICIAL_ENDPOINTS.baseUrl,
+  baseUrl: "https://www.openagenet.xyz",
   registrarEndpoint: DEFAULT_OAN_OFFICIAL_ENDPOINTS.registrarEndpoint,
   discoveryEndpoint: DEFAULT_OAN_OFFICIAL_ENDPOINTS.discoveryEndpoint,
   rootEndpoint: DEFAULT_OAN_OFFICIAL_ENDPOINTS.rootEndpoint,
