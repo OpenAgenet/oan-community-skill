@@ -899,6 +899,34 @@ assert(
   "Chinese authorizedDomains should report invalid_authorized_domains",
 );
 
+const filingIdentifierDraft = await descriptionSkill.draftRegistrationFromResourceDescription({
+  markdown: `# 文心一言
+
+文心一言 是一项面向用户任务处理的智能体服务。公开材料显示，该服务由北京百度网讯科技有限公司运营，备案或登记编号为 Beijing-WenXinYiYan-20230821。材料未提供可直接打开的服务页面，因此该资源以备案登记标识作为公共登记引用。
+
+## Suggested Registration Metadata
+
+| Field | Suggested value | Notes |
+| --- | --- | --- |
+| resourceType | \`agent_service\` | Resource category inferred from the service material. |
+| name | \`文心一言\` | Human-readable service name. |
+| version | \`1.0.0\` | Default version. |
+| endpoint | \`filing://internet-agent-survey-report/Beijing-WenXinYiYan-20230821\` | Public filing identifier. |
+| protocol | \`public-catalog\` | Access model. |
+| authorizedDomains | \`technology.software_engineering\` | Suggested domain. |
+| capabilityTags | \`agent-service\` | Capability tags. |
+| useCases | \`根据用户输入获取文心一言的生成、检索或执行结果\` | Typical use cases. |
+| inputs | \`用户任务描述; 可选上下文和约束条件\` | Inputs. |
+| outputs | \`智能体服务响应; 生成、检索、分析或任务执行结果\` | Outputs. |
+`,
+});
+assert(filingIdentifierDraft.ok, "filing identifier URI should satisfy public access metadata");
+assert(
+  filingIdentifierDraft.data?.candidate.endpoint ===
+    "filing://internet-agent-survey-report/Beijing-WenXinYiYan-20230821",
+  "filing identifier URI should be preserved as the endpoint",
+);
+
 const batchIdentityDir = await mkdtemp(join(tmpdir(), "oan-community-batch-test-"));
 try {
   const batch = await descriptionSkill.registerBatchFromResourceDescriptions({

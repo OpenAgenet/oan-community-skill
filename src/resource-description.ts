@@ -603,7 +603,7 @@ function normalizeUnknown(value?: string): string | undefined {
 
 function usefulUrl(value?: string): string | undefined {
   const cleaned = cleanupText(value).replace(/^<|>$/g, "");
-  if (!/^https?:\/\//.test(cleaned)) return undefined;
+  if (!/^(https?:\/\/|filing:\/\/)/.test(cleaned)) return undefined;
   if (cleaned.toLowerCase().includes("unknown")) return undefined;
   return cleaned;
 }
