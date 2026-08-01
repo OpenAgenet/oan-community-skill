@@ -1,8 +1,21 @@
 {
-  "name": "oan-community-skill",
-  "private": true,
+  "name": "@openagenet/oan-community-skill",
   "version": "0.1.0",
   "type": "module",
+  "license": "Apache-2.0",
+  "description": "Community-facing OAN skill package for registration, discovery, lifecycle, and governance workflows.",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "src",
+    "tests",
+    "README.md",
+    "SKILL.md",
+    "LICENSE"
+  ],
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
   "scripts": {
     "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit",
     "test": "node ./node_modules/tsx/dist/cli.mjs tests/oan-community-skill-tests.ts"
