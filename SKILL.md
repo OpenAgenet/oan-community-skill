@@ -52,7 +52,7 @@ is centralized.
 
 - Base URL: `https://www.openagenet.xyz`
 - Homepage: `https://openagenet.xyz`
-- Homepage API: `https://api.openagenet.xyz`
+- Homepage API: `https://www.openagenet.xyz`
 
 Use the public website gateway for community registration and Discovery
 scripts that need to work against the deployed official website. Keep the SDK's
