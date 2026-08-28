@@ -160,6 +160,8 @@ Default community posture:
 
 - use the official public website gateway, `https://www.openagenet.xyz`, unless
   the user configures third-party endpoints
+- do not treat recognized test nodes listed on the Network page, or any
+  loopback/internal operator endpoint, as ordinary community defaults
 - keep official endpoint defaults centralized through the SDK-derived default
   profile so future official IP/domain migration is a one-place update
 - keep private keys local

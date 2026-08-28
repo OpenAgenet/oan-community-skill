@@ -60,6 +60,13 @@ lower-level endpoint defaults as implementation references; this community
 skill should prefer the website gateway unless a user supplies third-party
 endpoints.
 
+The public Network page may list recognized test Registrar or Discovery nodes
+for operator testing and multi-node visibility. Do not treat loopback or
+internal test-node endpoints shown in operator material as community defaults.
+Community workflows should continue to use the official base URL
+`https://www.openagenet.xyz` unless the user explicitly provides reachable
+third-party endpoints.
+
 Use `baseUrl` as the normal user-facing configuration. The SDK derives
 Registrar, Discovery, Root, and CDN calls from that base URL. If a user or
 third-party operator provides explicit `registrarEndpoint`, `discoveryEndpoint`,
