@@ -3,7 +3,7 @@
 // Initial author: JINLIANG XU
 // Email: jlxufly@gmail.com
 
-import { OanHttpError } from "../../oan-sdk-ts/packages/client-ts/src/index.js";
+import { OanHttpError } from "@openagenet/oan-sdk-ts/client";
 import { createOanClient } from "./client-factory.js";
 import type {
   DiscoverySkillInput,

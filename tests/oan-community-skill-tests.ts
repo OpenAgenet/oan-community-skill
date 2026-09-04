@@ -5,7 +5,7 @@
 
 import { OanSkill } from "../src/index.js";
 import { createDefaultProfile, DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS } from "../src/profiles.js";
-import type { ResourceRegistrationSubmission } from "../../oan-sdk-ts/packages/protocol-types/src/index.js";
+import type { ResourceRegistrationSubmission } from "@openagenet/oan-sdk-ts/protocol-types";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";

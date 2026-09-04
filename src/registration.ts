@@ -3,13 +3,13 @@
 // Initial author: JINLIANG XU
 // Email: jlxufly@gmail.com
 
-import { OanHttpError } from "../../oan-sdk-ts/packages/client-ts/src/index.js";
-import { normalizeRegistrationSubmissionForOan } from "../../oan-sdk-ts/packages/sdk-ts/src/index.js";
+import { OanHttpError } from "@openagenet/oan-sdk-ts/client";
+import { normalizeRegistrationSubmissionForOan } from "@openagenet/oan-sdk-ts";
 import {
   createRegistrationSubmissionFromIdentity,
   type OanIdentityRecord,
-} from "../../oan-sdk-ts/packages/sdk-ts/src/identity.js";
-import type { ResourceRegistrationSubmission } from "../../oan-sdk-ts/packages/protocol-types/src/index.js";
+} from "@openagenet/oan-sdk-ts";
+import type { ResourceRegistrationSubmission } from "@openagenet/oan-sdk-ts/protocol-types";
 import { createOanClient } from "./client-factory.js";
 import type {
   OanSkillProfile,
@@ -22,7 +22,7 @@ import {
   createAgentIdentityNode,
   ensureSubjectIdentityNode,
   loadIdentityStoreSnapshot,
-} from "../../oan-sdk-ts/packages/sdk-ts/src/identity-store-node.js";
+} from "@openagenet/oan-sdk-ts/identity-store-node";
 import { createHash, randomBytes } from "node:crypto";
 
 export async function registerResourceWithSkill(

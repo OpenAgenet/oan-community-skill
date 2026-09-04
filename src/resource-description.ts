@@ -9,15 +9,15 @@ import {
   ensureSubjectIdentityNode,
   loadIdentityStoreSnapshot,
   saveIdentityStoreSnapshot,
-} from "../../oan-sdk-ts/packages/sdk-ts/src/identity-store-node.js";
-import { createRegistrationSubmissionFromIdentity } from "../../oan-sdk-ts/packages/sdk-ts/src/identity.js";
-import type { OanIdentityRecord } from "../../oan-sdk-ts/packages/sdk-ts/src/identity.js";
+} from "@openagenet/oan-sdk-ts/identity-store-node";
+import { createRegistrationSubmissionFromIdentity } from "@openagenet/oan-sdk-ts";
+import type { OanIdentityRecord } from "@openagenet/oan-sdk-ts";
 import type {
   ImplementationLink,
   ProtocolBinding,
   ResourceRegistrationSubmission,
   ResourceType,
-} from "../../oan-sdk-ts/packages/protocol-types/src/index.js";
+} from "@openagenet/oan-sdk-ts/protocol-types";
 import { registerResourceWithSkill } from "./registration.js";
 import type {
   CommunityRegistrableResourceType,

@@ -3,7 +3,7 @@
 // Initial author: JINLIANG XU
 // Email: jlxufly@gmail.com
 
-import { subjectTypeCodeForRole } from "../../oan-sdk-ts/packages/governance-ts/src/index.js";
+import { subjectTypeCodeForRole } from "@openagenet/oan-sdk-ts/governance";
 import { createGovernanceClient } from "./client-factory.js";
 import type {
   GovernanceAssistInput,

@@ -3,8 +3,8 @@
 // Initial author: JINLIANG XU
 // Email: jlxufly@gmail.com
 
-import { OanClient } from "../../oan-sdk-ts/packages/client-ts/src/index.js";
-import { GovernanceClient } from "../../oan-sdk-ts/packages/governance-ts/src/index.js";
+import { OanClient } from "@openagenet/oan-sdk-ts/client";
+import { GovernanceClient } from "@openagenet/oan-sdk-ts/governance";
 import type { OanSkillProfile } from "./types.js";
 import { selectBaseUrl, selectDiscoveryEndpoint, selectRegistrarEndpoint } from "./profiles.js";
 

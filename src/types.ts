@@ -5,7 +5,7 @@
 
 import type {
   GovernanceDecision,
-} from "../../oan-sdk-ts/packages/governance-ts/src/index.js";
+} from "@openagenet/oan-sdk-ts/governance";
 import type {
   ResourceType,
   CapabilityTagNormalizeResponse,
@@ -24,8 +24,8 @@ import type {
   ResourceRegistrationResponse,
   ResourceRegistrationSubmission,
   RootAuthorizationInspection,
-} from "../../oan-sdk-ts/packages/protocol-types/src/index.js";
-import type { OanIdentityRecord } from "../../oan-sdk-ts/packages/sdk-ts/src/identity.js";
+} from "@openagenet/oan-sdk-ts/protocol-types";
+import type { OanIdentityRecord } from "@openagenet/oan-sdk-ts";
 
 export type NodeSelectionMode =
   | "official-only"

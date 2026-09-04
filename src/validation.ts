@@ -10,7 +10,7 @@ import {
   normalizeRegistrationSubmissionForOan,
   verifyDidDocumentServiceBindings,
   verifyHashLike,
-} from "../../oan-sdk-ts/packages/sdk-ts/src/index.js";
+} from "@openagenet/oan-sdk-ts";
 import type {
   SkillActionResult,
   ValidationSkillInput,

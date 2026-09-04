@@ -4,7 +4,7 @@
 // Email: jlxufly@gmail.com
 
 import type { OanSkillProfile } from "./types.js";
-import { DEFAULT_OAN_OFFICIAL_ENDPOINTS } from "../../oan-sdk-ts/packages/client-ts/src/index.js";
+import { DEFAULT_OAN_OFFICIAL_ENDPOINTS } from "@openagenet/oan-sdk-ts/client";
 
 export const DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS = {
   baseUrl: "https://www.openagenet.xyz",
