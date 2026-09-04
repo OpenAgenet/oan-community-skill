@@ -6,10 +6,91 @@ Email: jlxufly@gmail.com
 
 # OAN Community Skill
 
-`oan-community-skill` is the community-facing AI workflow package for OAN.
+`oan-community-skill` is the community-facing AI workflow package for
+OpenAgenet (OAN), an open infrastructure project for the Internet of Agents (IoA).
+It helps users turn Agent Service, Skill, MCP Server, and Tool/API
+resources into `did:oan` resource registrations and then query Discovery with
+trust-aware, semantic discovery workflows.
 
-It helps users register and discover OAN product resources through Registrar
-and Discovery endpoints. It does not operate the OAN network itself.
+Published package:
+
+```powershell
+npm install @openagenet/oan-community-skill
+```
+
+It depends on `@openagenet/oan-sdk-ts`.
+
+The skill helps users register and discover OAN product resources through
+Registrar and Discovery endpoints. It does not operate the OAN network itself.
+
+## How To Use It
+
+Use this skill when you have a resource description and want help turning it
+into an OAN registration or discovery workflow.
+
+Typical starting points:
+
+- a product README, markdown note, or service description that needs to become
+  a registration draft
+- a short plain-text description of a third-party resource that should be
+  normalized into `did:oan` registration material
+- a batch folder of resource descriptions that should be onboarded one by one
+- an existing resource DID that you want to check for Discovery visibility or
+  lifecycle state
+
+Typical flow:
+
+1. load or write the resource description
+2. call `draftRegistrationFromResourceDescription()` when human review is still
+   needed
+3. fill the missing fields reported by the skill
+4. call `registerFromResourceDescription()` or `register()`
+5. use `discover()` or `checkLifecycle()` after registration to confirm the
+   result
+
+If the material is already structured, skip the draft step and submit the
+resource directly. If the material is incomplete, use the returned
+`missingInputs`, `qualityIssues`, and suggested next actions to finish it before
+submission.
+
+Example use cases:
+
+- a product team has an OAN community skill description and wants to turn it
+  into a registration draft
+- a platform operator has a folder of OAN community skill material and wants the skill
+  to batch-register the ones that are ready
+- a maintainer wants to check whether the published OAN community skill is now visible in
+  Discovery after registration
+
+Example flow for one resource:
+
+```ts
+import { OanSkill } from "@openagenet/oan-community-skill";
+
+const skill = new OanSkill();
+const draft = await skill.draftRegistrationFromResourceDescription({
+  text: "OAN community skill for registration and discovery workflows.",
+  identityDir: ".oan-community-identities",
+});
+
+if (draft.ok) {
+  await skill.registerFromResourceDescription({
+    text: "OAN community skill for registration and discovery workflows.",
+    identityDir: ".oan-community-identities",
+    overrides: {
+      resourceType: "skill",
+      name: "OAN Community Skill",
+      endpoint: "https://www.openagenet.xyz/",
+      protocol: "skill",
+      authorizedDomains: ["openagenet.xyz"],
+      capabilityTags: ["oan.community.skill", "registration", "discovery"],
+      useCases: ["Register OAN resources", "Discover OAN resources"],
+      inputs: ["Resource description"],
+      outputs: ["Registration draft or submission"],
+    },
+  });
+}
+```
 
 Primary workflows:
 
@@ -56,7 +137,7 @@ maintainers, or authorized domains.
 
 ```ts
 import { readFile } from "node:fs/promises";
-import { OanSkill } from "./src/index.js";
+import { OanSkill } from "@openagenet/oan-community-skill";
 
 const skill = new OanSkill({
   nodeSelectionMode: "official-preferred",
@@ -79,23 +160,22 @@ if (!draft.ok) {
 }
 ```
 
-For third-party resources that are not already written in the harvested
-markdown format, provide plain text and structured overrides:
+For OAN community skill material, provide plain text and structured overrides:
 
 ```ts
 await skill.registerFromResourceDescription({
-  text: "A public MCP server for repository search and issue triage.",
+  text: "OAN community skill for registration and discovery workflows.",
   identityDir: ".oan-community-identities",
   overrides: {
-    resourceType: "mcp_server",
-    name: "Repository Triage MCP Server",
-    endpoint: "https://example.org/mcp",
-    protocol: "mcp",
-    authorizedDomains: ["technology.software_engineering"],
-    capabilityTags: ["protocol.mcp", "developer-tooling", "repository-search"],
-    useCases: ["Find code repositories", "Summarize issue context"],
-    inputs: ["Natural language development query"],
-    outputs: ["Repository or issue candidates"],
+    resourceType: "skill",
+    name: "OAN Community Skill",
+    endpoint: "https://www.openagenet.xyz/",
+    protocol: "skill",
+    authorizedDomains: ["openagenet.xyz"],
+    capabilityTags: ["oan.community.skill", "registration", "discovery"],
+    useCases: ["Register OAN resources", "Discover OAN resources"],
+    inputs: ["Resource description"],
+    outputs: ["Registration draft or submission"],
   },
 });
 ```
