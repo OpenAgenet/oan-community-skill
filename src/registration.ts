@@ -26,13 +26,16 @@ import {
 import { createHash, randomBytes } from "node:crypto";
 import crypto from "node:crypto";
 
+const DEFAULT_COMMUNITY_REGISTRAR_DID = "did:oan:INRG:community";
+
 export async function registerResourceWithSkill(
   profile: OanSkillProfile,
   input: RegistrationSkillInput,
   options: { fetchImpl?: typeof fetch } = {},
 ): Promise<SkillActionResult<RegistrationSkillOutput>> {
   const prepared = await prepareSubmission(input);
-  const normalizedSubmission = await finalizeRegistrationSubmissionWithControllerProof(prepared);
+  const registrarDid = input.registrarDid ?? profile.registrarDid ?? DEFAULT_COMMUNITY_REGISTRAR_DID;
+  const normalizedSubmission = await finalizeRegistrationSubmissionWithControllerProof(prepared, registrarDid);
   const validation = validateRegistrationInput({ submission: normalizedSubmission });
   if (!validation.ok) {
     return {
@@ -147,16 +150,17 @@ async function prepareSubmission(
 async function finalizeRegistrationSubmissionWithControllerProof(prepared: {
   submission: ResourceRegistrationSubmission;
   subjectIdentity?: OanIdentityRecord;
-}): Promise<ResourceRegistrationSubmission> {
-  const submission = finalizeRegistrationSubmission(prepared.submission);
+}, registrarDid: string): Promise<ResourceRegistrationSubmission> {
+  const submission = finalizeRegistrationSubmission(prepared.submission, registrarDid);
   if (prepared.subjectIdentity && !submission.controllerAuthorizationProof) {
-    attachControllerAuthorizationProofNode(submission, prepared.subjectIdentity, "did:oan:INRG:community");
+    attachControllerAuthorizationProofNode(submission, prepared.subjectIdentity, registrarDid);
   }
   return submission;
 }
 
 export function finalizeRegistrationSubmission(
   input: ResourceRegistrationSubmission,
+  registrarDid = DEFAULT_COMMUNITY_REGISTRAR_DID,
 ): ResourceRegistrationSubmission {
   const submission = normalizeRegistrationSubmissionForOan(input);
   const hashAlgorithm = submission.hashAlgorithm || "sha256";
@@ -178,7 +182,7 @@ export function finalizeRegistrationSubmission(
       draftId: `draft-${Date.now().toString(36)}`,
       subjectDid: submission.resourceDid,
       didDocumentHash,
-      registrarDid: "did:oan:INRG:community",
+      registrarDid,
       purpose: "resource-registration",
       verificationMethod,
       nonce: randomBytes(16).toString("hex"),

@@ -360,6 +360,7 @@ assert(gatewayOperator.data?.discoveryReachable, "gateway discovery should be re
 const skill = new OanSkill(
   {
     nodeSelectionMode: "custom-only",
+    registrarDid: "did:oan:INRG:test",
     customRegistrarEndpoints: ["https://registrar.example"],
     customDiscoveryEndpoints: ["https://discovery.example"],
     rootReferenceEndpoint: "https://root.example",
@@ -469,7 +470,7 @@ try {
     .at(-1);
   assert(generatedRequest?.body, "generated registration should submit a request body");
   const generatedSubmitted = generatedRequest.body as ResourceRegistrationSubmission & {
-    controllerAuthorizationProof?: { challenge?: { controllerDid?: string; resourceDid?: string } };
+    controllerAuthorizationProof?: { challenge?: { controllerDid?: string; registrarDid?: string; resourceDid?: string } };
   };
   assert(
     generatedSubmitted.controllerAuthorizationProof?.challenge?.controllerDid ===
@@ -480,6 +481,14 @@ try {
     generatedSubmitted.controllerAuthorizationProof?.challenge?.resourceDid ===
       generatedRegistration.data?.agentIdentity?.did,
     "controllerAuthorizationProof should bind generated resource DID",
+  );
+  assert(
+    generatedSubmitted.subjectControlProof?.challenge?.registrarDid === "did:oan:INRG:test",
+    "subjectControlProof should bind the configured Registrar DID",
+  );
+  assert(
+    generatedSubmitted.controllerAuthorizationProof?.challenge?.registrarDid === "did:oan:INRG:test",
+    "controllerAuthorizationProof should bind the configured Registrar DID",
   );
   assert(
     !JSON.stringify(generatedSubmitted).includes("privateKeyJwk"),
@@ -592,6 +601,7 @@ android-transfer-skill is a community skill for moving files from a macOS workst
 const descriptionSkill = new OanSkill(
   {
     nodeSelectionMode: "custom-only",
+    registrarDid: "did:oan:INRG:test",
     customRegistrarEndpoints: ["https://registrar.example"],
     customDiscoveryEndpoints: ["https://discovery.example"],
     rootReferenceEndpoint: "https://root.example",

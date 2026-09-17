@@ -44,6 +44,7 @@ export interface OanSkillProfile {
   nodeSelectionMode: NodeSelectionMode;
   baseUrl?: string;
   officialRegistrarEndpoints?: string[];
+  registrarDid?: string;
   officialDiscoveryEndpoints?: string[];
   customRegistrarEndpoints?: string[];
   customDiscoveryEndpoints?: string[];
@@ -72,6 +73,7 @@ export interface SkillActionResult<T = unknown> {
 
 export interface RegistrationSkillInput {
   submission?: ResourceRegistrationSubmission;
+  registrarDid?: string;
   identityDir?: string;
   subjectIdentityId?: string;
   agentIdentityId?: string;
