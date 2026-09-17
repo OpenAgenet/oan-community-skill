@@ -24,6 +24,7 @@ import {
   loadIdentityStoreSnapshot,
 } from "@openagenet/oan-sdk-ts/identity-store-node";
 import { createHash, randomBytes } from "node:crypto";
+import crypto from "node:crypto";
 
 export async function registerResourceWithSkill(
   profile: OanSkillProfile,
@@ -31,7 +32,7 @@ export async function registerResourceWithSkill(
   options: { fetchImpl?: typeof fetch } = {},
 ): Promise<SkillActionResult<RegistrationSkillOutput>> {
   const prepared = await prepareSubmission(input);
-  const normalizedSubmission = finalizeRegistrationSubmission(prepared.submission);
+  const normalizedSubmission = await finalizeRegistrationSubmissionWithControllerProof(prepared);
   const validation = validateRegistrationInput({ submission: normalizedSubmission });
   if (!validation.ok) {
     return {
@@ -141,6 +142,17 @@ async function prepareSubmission(
     subjectIdentity: selectedSubject,
     agentIdentity,
   };
+}
+
+async function finalizeRegistrationSubmissionWithControllerProof(prepared: {
+  submission: ResourceRegistrationSubmission;
+  subjectIdentity?: OanIdentityRecord;
+}): Promise<ResourceRegistrationSubmission> {
+  const submission = finalizeRegistrationSubmission(prepared.submission);
+  if (prepared.subjectIdentity && !submission.controllerAuthorizationProof) {
+    attachControllerAuthorizationProofNode(submission, prepared.subjectIdentity, "did:oan:INRG:community");
+  }
+  return submission;
 }
 
 export function finalizeRegistrationSubmission(
@@ -284,6 +296,7 @@ function normalizeDidDocumentForRoot(didDocument: Record<string, unknown>): Reco
     ),
     authentication: didDocument.authentication ?? [],
     assertionMethod: didDocument.assertionMethod ?? [],
+    capabilityInvocation: didDocument.capabilityInvocation ?? didDocument.assertionMethod ?? [],
     service: arrayOfRecords(didDocument.service).map((service) =>
       cleanJson({
         id: service.id,
@@ -388,6 +401,99 @@ function firstVerificationMethodId(submission: ResourceRegistrationSubmission): 
   if (!Array.isArray(methods)) return undefined;
   const first = methods[0];
   return typeof first === "object" && first && "id" in first ? String(first.id) : undefined;
+}
+
+function attachControllerAuthorizationProofNode(
+  submission: ResourceRegistrationSubmission,
+  controllerIdentity: OanIdentityRecord,
+  registrarDid: string,
+): void {
+  if (!submission.didDocumentHash || !submission.metadataHash) {
+    throw new Error("missing_hashes_for_controller_authorization");
+  }
+  const controllerDid = submission.didDocument.oanMetadata?.controllerDid ?? controllerIdentity.did;
+  if (controllerDid !== controllerIdentity.did) {
+    throw new Error("controller_identity_mismatch");
+  }
+  const issuedAt = new Date().toISOString();
+  const verificationMethod = controllerIdentity.verificationMethodId || `${controllerIdentity.did}#key-1`;
+  const challenge = {
+    challengeId: `community-skill-controller-auth-${Date.now().toString(36)}`,
+    resourceDid: submission.resourceDid,
+    controllerDid,
+    publisherDid: submission.didDocument.oanMetadata?.publisherDid,
+    didDocumentHash: submission.didDocumentHash,
+    metadataHash: submission.metadataHash,
+    registrarDid,
+    purpose: "resource-registration-controller-authorization",
+    verificationMethod,
+    nonce: randomBytes(16).toString("hex"),
+    issuedAt,
+    expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+  };
+  const privateKey = crypto.createPrivateKey({
+    key: controllerIdentity.privateKeyJwk as JsonWebKey,
+    format: "jwk",
+  });
+  submission.controllerAuthorizationProof = {
+    challenge,
+    controllerDidDocument: sanitizeControllerDidDocument(controllerIdentity),
+    proof: {
+      type: "Ed25519Signature2020",
+      creator: controllerIdentity.did,
+      created: issuedAt,
+      proofPurpose: "capabilityInvocation",
+      proofValue: crypto.sign(null, Buffer.from(canonicalJson(challenge), "utf8"), privateKey).toString("base64url"),
+      cryptoSuite: "Ed25519Sha256",
+      hashAlgorithm: "SHA-256",
+      verificationMethod,
+    },
+  };
+}
+
+function sanitizeControllerDidDocument(record: OanIdentityRecord): ResourceRegistrationSubmission["didDocument"] {
+  const didDocument = cleanJson(record.didDocument) as ResourceRegistrationSubmission["didDocument"];
+  didDocument.id = record.did;
+  didDocument.verificationMethod = [
+    {
+      ...(didDocument.verificationMethod?.[0] ?? {
+        id: record.verificationMethodId,
+        type: "Ed25519VerificationKey2020",
+        controller: record.did,
+      }),
+      id: record.verificationMethodId,
+      controller: record.did,
+      publicKeyJwk: record.publicKeyJwk,
+      publicKeyMultibase: undefined,
+    },
+  ];
+  didDocument.authentication = didDocument.authentication?.length ? didDocument.authentication : [record.verificationMethodId];
+  didDocument.assertionMethod = didDocument.assertionMethod?.length ? didDocument.assertionMethod : [record.verificationMethodId];
+  const capabilityInvocation = didDocument.capabilityInvocation;
+  didDocument.capabilityInvocation =
+    Array.isArray(capabilityInvocation) && capabilityInvocation.length > 0
+      ? capabilityInvocation
+      : [record.verificationMethodId];
+  return removePrivateKeyMaterial(didDocument) as ResourceRegistrationSubmission["didDocument"];
+}
+
+function removePrivateKeyMaterial(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(removePrivateKeyMaterial);
+  if (!value || typeof value !== "object") return value;
+  const output: Record<string, unknown> = {};
+  for (const [key, entryValue] of Object.entries(value as Record<string, unknown>)) {
+    if (
+      key === "privateKeyJwk" ||
+      key === "privateKeyMultibase" ||
+      key === "privateKeyBase58" ||
+      key === "privateKeyHex" ||
+      key === "d"
+    ) {
+      continue;
+    }
+    output[key] = removePrivateKeyMaterial(entryValue);
+  }
+  return output;
 }
 
 function hashJson(value: unknown): string {

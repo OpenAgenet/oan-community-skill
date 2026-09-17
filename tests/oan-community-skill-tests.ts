@@ -464,6 +464,27 @@ try {
     generatedRegistration.data?.agentIdentity?.profile.authorizedDomains?.[0] === "legal",
     "generated registration should retain authorized domains",
   );
+  const generatedRequest = capturedRequests
+    .filter((request) => request.key === "POST https://registrar.example/resources/register")
+    .at(-1);
+  assert(generatedRequest?.body, "generated registration should submit a request body");
+  const generatedSubmitted = generatedRequest.body as ResourceRegistrationSubmission & {
+    controllerAuthorizationProof?: { challenge?: { controllerDid?: string; resourceDid?: string } };
+  };
+  assert(
+    generatedSubmitted.controllerAuthorizationProof?.challenge?.controllerDid ===
+      generatedRegistration.data?.subjectIdentity?.did,
+    "generated registration should attach controllerAuthorizationProof",
+  );
+  assert(
+    generatedSubmitted.controllerAuthorizationProof?.challenge?.resourceDid ===
+      generatedRegistration.data?.agentIdentity?.did,
+    "controllerAuthorizationProof should bind generated resource DID",
+  );
+  assert(
+    !JSON.stringify(generatedSubmitted).includes("privateKeyJwk"),
+    "generated registration submission should not include privateKeyJwk",
+  );
 } finally {
   await rm(identityDir, { recursive: true, force: true });
 }
