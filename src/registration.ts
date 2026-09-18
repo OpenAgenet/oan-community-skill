@@ -467,6 +467,7 @@ function sanitizeControllerDidDocument(record: OanIdentityRecord): ResourceRegis
       }),
       id: record.verificationMethodId,
       controller: record.did,
+      cryptoSuite: "Ed25519Sha256",
       publicKeyJwk: record.publicKeyJwk,
       publicKeyMultibase: undefined,
     },

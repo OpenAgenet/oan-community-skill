@@ -470,7 +470,10 @@ try {
     .at(-1);
   assert(generatedRequest?.body, "generated registration should submit a request body");
   const generatedSubmitted = generatedRequest.body as ResourceRegistrationSubmission & {
-    controllerAuthorizationProof?: { challenge?: { controllerDid?: string; registrarDid?: string; resourceDid?: string } };
+    controllerAuthorizationProof?: {
+      challenge?: { controllerDid?: string; registrarDid?: string; resourceDid?: string };
+      controllerDidDocument?: { verificationMethod?: Array<{ cryptoSuite?: string }> };
+    };
   };
   assert(
     generatedSubmitted.controllerAuthorizationProof?.challenge?.controllerDid ===
@@ -489,6 +492,11 @@ try {
   assert(
     generatedSubmitted.controllerAuthorizationProof?.challenge?.registrarDid === "did:oan:INRG:test",
     "controllerAuthorizationProof should bind the configured Registrar DID",
+  );
+  assert(
+    generatedSubmitted.controllerAuthorizationProof?.controllerDidDocument?.verificationMethod?.[0]?.cryptoSuite ===
+      "Ed25519Sha256",
+    "controllerAuthorizationProof should expose the controller DID document crypto suite",
   );
   assert(
     !JSON.stringify(generatedSubmitted).includes("privateKeyJwk"),
