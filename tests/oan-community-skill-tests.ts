@@ -474,6 +474,9 @@ try {
       challenge?: { controllerDid?: string; registrarDid?: string; resourceDid?: string };
       controllerDidDocument?: { verificationMethod?: Array<{ cryptoSuite?: string }> };
     };
+    subjectControlProof?: {
+      challenge?: { registrarDid?: string };
+    };
   };
   assert(
     generatedSubmitted.controllerAuthorizationProof?.challenge?.controllerDid ===
@@ -529,6 +532,15 @@ assert(operator.data?.discoveryReachable, "discovery should be reachable");
 assert(
   operator.data?.discoveryAuthorizedDomains?.authorizedDomains?.[0] === "technology.software_engineering",
   "operator assist authorized domains mismatch",
+);
+assert(
+  !capturedRequests.some((request) =>
+    request.key === "GET https://registrar.example/resources" ||
+    request.key.startsWith("GET https://registrar.example/resources?") ||
+    request.key.startsWith("GET https://cdn.example/cdn/resources/index") ||
+    request.key.startsWith("GET https://discovery.example/discovery/index/resources?"),
+  ),
+  "community lifecycle observation must not depend on full resource list endpoints",
 );
 
 const capabilityAssist = await skill.capabilityAssist({ query: "mcp server", tags: [" Protocol MCP ", "security audit"] });
