@@ -7,10 +7,12 @@ import {
   assertDidOan,
   assertDidSubjectMatchesResourceType,
   assertSupportedInitialResourceType,
+  canonicalJson,
   normalizeRegistrationSubmissionForOan,
   verifyDidDocumentServiceBindings,
   verifyHashLike,
 } from "@openagenet/oan-sdk-ts";
+import { createHash } from "node:crypto";
 import type {
   SkillActionResult,
   ValidationSkillInput,
@@ -99,6 +101,38 @@ export function validateRegistrationInput(
     };
   }
   findings.push("authorizedDomains are explicit and well-formed");
+
+  if (!submission.didDocument.proof) {
+    return {
+      ok: false,
+      stage: "failed-validation",
+      errorCategory: "input error",
+      errorMessage: "didDocument.proof is required for profile-v2 registration",
+      suggestedNextActions: ["Generate the top-level DID Document proof before submission."],
+    };
+  }
+
+  if (!submission.didDocumentHash) {
+    return {
+      ok: false,
+      stage: "failed-validation",
+      errorCategory: "input error",
+      errorMessage: "didDocumentHash is required",
+      suggestedNextActions: ["Recompute the complete DID Document hash after proof generation."],
+    };
+  }
+  const expectedDidDocumentHash = `sha256:${createHash("sha256")
+    .update(canonicalJson(submission.didDocument))
+    .digest("hex")}`;
+  if (submission.didDocumentHash !== expectedDidDocumentHash) {
+    return {
+      ok: false,
+      stage: "failed-validation",
+      errorCategory: "input error",
+      errorMessage: "didDocumentHash does not match the complete DID Document",
+      suggestedNextActions: ["Regenerate the DID Document hash after all document fields and proof are final."],
+    };
+  }
 
   if (!submission.packageHash || !submission.metadataHash || !submission.hashAlgorithm) {
     return {

@@ -10,7 +10,10 @@ import {
   loadIdentityStoreSnapshot,
   saveIdentityStoreSnapshot,
 } from "@openagenet/oan-sdk-ts/identity-store-node";
-import { createRegistrationSubmissionFromIdentity } from "@openagenet/oan-sdk-ts";
+import {
+  createRegistrationSubmissionFromIdentity,
+  finalizeRegistrationSubmissionWithProof,
+} from "@openagenet/oan-sdk-ts";
 import type { OanIdentityRecord } from "@openagenet/oan-sdk-ts";
 import type {
   ImplementationLink,
@@ -279,7 +282,10 @@ async function createSubmission(
     packageVersion: candidate.version,
   });
   enrichSubmission(submission, candidate);
-  return submission;
+  return finalizeRegistrationSubmissionWithProof(submission, {
+    controllerIdentity: subject.record,
+    registrarDid: "did:oan:P9aBc:2LmNo3PqRsTuVwXyZaBcDeFgHiJkLmNo",
+  });
 }
 
 async function ensureReusableAgentIdentity(

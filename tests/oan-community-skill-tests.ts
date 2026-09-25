@@ -5,7 +5,7 @@
 
 import { OanSkill } from "../src/index.js";
 import { createDefaultProfile, DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS } from "../src/profiles.js";
-import { hashRegistrationPackageBinding } from "@openagenet/oan-sdk-ts";
+import { hashDidDocumentWithProof, hashRegistrationPackageBinding } from "@openagenet/oan-sdk-ts";
 import type { ResourceRegistrationSubmission } from "@openagenet/oan-sdk-ts/protocol-types";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -68,6 +68,17 @@ const submission: ResourceRegistrationSubmission = {
   packageHash: "sha256:package",
   hashAlgorithm: "sha256",
 };
+submission.didDocument.proof = {
+  type: "Ed25519Signature2020",
+  creator: `${resourceDid}#key-1`,
+  created: "2026-06-23T00:00:00Z",
+  proofPurpose: "assertionMethod",
+  proofValue: "fixture-proof",
+  cryptoSuite: "ed25519-sha256",
+  hashAlgorithm: "sha256",
+  verificationMethod: `${resourceDid}#key-1`,
+};
+submission.didDocumentHash = `sha256:${await hashDidDocumentWithProof(submission.didDocument)}`;
 
 const capturedRequests: Array<{ key: string; body?: unknown }> = [];
 const fetchStub = createFetchStub({
@@ -386,6 +397,13 @@ const missingDomainValidation = skill.validate({
         resourceType: "skill",
       },
     },
+    didDocumentHash: `sha256:${await hashDidDocumentWithProof({
+      ...submission.didDocument,
+      oanMetadata: {
+        subjectType: "skill",
+        resourceType: "skill",
+      },
+    })}`,
   },
 });
 assert(!missingDomainValidation.ok, "missing authorizedDomains should fail validation");
