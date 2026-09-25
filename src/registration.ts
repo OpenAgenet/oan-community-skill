@@ -4,7 +4,12 @@
 // Email: jlxufly@gmail.com
 
 import { OanHttpError } from "@openagenet/oan-sdk-ts/client";
-import { normalizeRegistrationSubmissionForOan } from "@openagenet/oan-sdk-ts";
+import {
+  finalizeRegistrationSubmissionWithProof,
+  hashRegistrationPackageBinding,
+  hashDidDocumentWithProof,
+  normalizeRegistrationSubmissionForOan,
+} from "@openagenet/oan-sdk-ts";
 import {
   createRegistrationSubmissionFromIdentity,
   type OanIdentityRecord,
@@ -23,10 +28,9 @@ import {
   ensureSubjectIdentityNode,
   loadIdentityStoreSnapshot,
 } from "@openagenet/oan-sdk-ts/identity-store-node";
-import { createHash, randomBytes } from "node:crypto";
-import crypto from "node:crypto";
+import { createHash } from "node:crypto";
 
-const DEFAULT_COMMUNITY_REGISTRAR_DID = "did:oan:INRG:community";
+const DEFAULT_COMMUNITY_REGISTRAR_DID = "did:oan:P9aBc:2LmNo3PqRsTuVwXyZaBcDeFgHiJkLmNo";
 
 export async function registerResourceWithSkill(
   profile: OanSkillProfile,
@@ -151,72 +155,36 @@ async function finalizeRegistrationSubmissionWithControllerProof(prepared: {
   submission: ResourceRegistrationSubmission;
   subjectIdentity?: OanIdentityRecord;
 }, registrarDid: string): Promise<ResourceRegistrationSubmission> {
-  const submission = finalizeRegistrationSubmission(prepared.submission, registrarDid);
-  if (prepared.subjectIdentity && !submission.controllerAuthorizationProof) {
-    attachControllerAuthorizationProofNode(submission, prepared.subjectIdentity, registrarDid);
+  const submission = await finalizeRegistrationSubmission(prepared.submission);
+  if (prepared.subjectIdentity) {
+    return finalizeRegistrationSubmissionWithProof(submission, {
+      controllerIdentity: prepared.subjectIdentity,
+      registrarDid,
+    });
   }
   return submission;
 }
 
-export function finalizeRegistrationSubmission(
+export async function finalizeRegistrationSubmission(
   input: ResourceRegistrationSubmission,
-  registrarDid = DEFAULT_COMMUNITY_REGISTRAR_DID,
-): ResourceRegistrationSubmission {
+): Promise<ResourceRegistrationSubmission> {
   const submission = normalizeRegistrationSubmissionForOan(input);
   const hashAlgorithm = submission.hashAlgorithm || "sha256";
   const now = new Date().toISOString();
 
   submission.hashAlgorithm = hashAlgorithm;
   submission.packageVersion = submission.packageVersion || "1.0.0";
-  submission.didDocument = normalizeDidDocumentForRoot(
-    enrichDidDocumentMetadata(submission.didDocument as Record<string, unknown>, submission),
+  submission.didDocument = enrichDidDocumentMetadata(
+    submission.didDocument as Record<string, unknown>,
+    submission,
   ) as ResourceRegistrationSubmission["didDocument"];
 
-  const didDocumentHash = `${hashAlgorithm}:${hashJson(submission.didDocument)}`;
+  const didDocumentHash = `${hashAlgorithm}:${await hashDidDocumentWithProof(submission.didDocument)}`;
   submission.didDocumentHash = didDocumentHash;
-
-  const verificationMethod = firstVerificationMethodId(submission) ?? `${submission.resourceDid}#key-1`;
-  submission.subjectControlProof = {
-    challenge: {
-      challengeId: `community-skill-${Date.now().toString(36)}`,
-      draftId: `draft-${Date.now().toString(36)}`,
-      subjectDid: submission.resourceDid,
-      didDocumentHash,
-      registrarDid,
-      purpose: "resource-registration",
-      verificationMethod,
-      nonce: randomBytes(16).toString("hex"),
-      issuedAt: now,
-      expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-    },
-    proof: {
-      type: "DataIntegrityProof",
-      creator: verificationMethod,
-      created: now,
-      proofPurpose: "assertionMethod",
-      proofValue: `${hashAlgorithm}:${hashJson({
-        resourceDid: submission.resourceDid,
-        didDocumentHash,
-        issuedAt: now,
-      })}`,
-      cryptoSuite: "Ed25519Sha256",
-      hashAlgorithm,
-      verificationMethod,
-    },
-    verifiedAt: now,
-    verifiedVerificationMethod: verificationMethod,
-  };
 
   const metadata = buildResourceMetadata(submission, now);
   submission.metadataHash = `${hashAlgorithm}:${hashJson(metadata)}`;
-  submission.packageHash = `${hashAlgorithm}:${hashJson({
-    packageVersion: submission.packageVersion,
-    resourceDid: submission.resourceDid,
-    resourceType: submission.resourceType,
-    didDocumentHash: submission.didDocumentHash,
-    metadataHash: submission.metadataHash,
-    hashAlgorithm,
-  })}`;
+  submission.packageHash = `${hashAlgorithm}:${await hashRegistrationPackageBinding(submission)}`;
   submission.metadata = {
     ...(typeof submission.metadata === "object" && submission.metadata ? submission.metadata : {}),
     name: metadata.name,
@@ -238,7 +206,6 @@ function enrichDidDocumentMetadata(
   const packageInfo = {
     ...asRecord(metadata.packageInfo),
     version: submission.packageVersion,
-    packageHash: submission.packageHash,
     metadataHash: submission.metadataHash,
     hashAlgorithm: submission.hashAlgorithm || "sha256",
   };
@@ -278,104 +245,6 @@ function normalizeCredentialRequirements(value: unknown): Array<Record<string, u
   });
 }
 
-function normalizeDidDocumentForRoot(didDocument: Record<string, unknown>): Record<string, unknown> {
-  const metadata = asRecord(didDocument.oanMetadata);
-  return cleanJson({
-    "@context": Array.isArray(didDocument["@context"])
-      ? didDocument["@context"]
-      : didDocument["@context"]
-        ? [didDocument["@context"]]
-        : [],
-    id: didDocument.id,
-    verificationMethod: arrayOfRecords(didDocument.verificationMethod).map((method) =>
-      cleanJson({
-        id: method.id,
-        type: method.type,
-        controller: method.controller,
-        cryptoSuite: method.cryptoSuite,
-        publicKeyFormat: method.publicKeyFormat,
-        publicKeyMultibase: method.publicKeyMultibase,
-        publicKeyJwk: method.publicKeyJwk,
-      }),
-    ),
-    authentication: didDocument.authentication ?? [],
-    assertionMethod: didDocument.assertionMethod ?? [],
-    capabilityInvocation: didDocument.capabilityInvocation ?? didDocument.assertionMethod ?? [],
-    service: arrayOfRecords(didDocument.service).map((service) =>
-      cleanJson({
-        id: service.id,
-        type: service.type,
-        serviceEndpoint: service.serviceEndpoint,
-        version: service.version,
-        protocol: service.protocol,
-        serverType: service.serverType,
-        port: service.port,
-      }),
-    ),
-    oanMetadata: cleanJson({
-      subjectType: metadata.subjectType,
-      resourceType: metadata.resourceType,
-      nodeRole: metadata.nodeRole,
-      identityType: metadata.identityType,
-      controllerDid: metadata.controllerDid,
-      publisherDid: metadata.publisherDid,
-      issuerDid: metadata.issuerDid,
-      ttl: metadata.ttl,
-      resourceDescription: normalizeResourceDescription(metadata.resourceDescription),
-      agentDescription: metadata.agentDescription,
-      capabilityTags: metadata.capabilityTags ?? [],
-      authorizedDomains: metadata.authorizedDomains ?? [],
-      protocolBindings: metadata.protocolBindings ?? [],
-      implementationLinks: metadata.implementationLinks ?? [],
-      credentialRequirements: metadata.credentialRequirements ?? [],
-      packageInfo: normalizePackageInfoForRoot(metadata.packageInfo),
-      servicePolicy: metadata.servicePolicy,
-      networkScope: metadata.networkScope,
-      lifecycleState: metadata.lifecycleState,
-    }),
-  });
-}
-
-function normalizeResourceDescription(value: unknown): Record<string, unknown> | undefined {
-  const description = asRecord(value);
-  if (Object.keys(description).length === 0) return undefined;
-  return {
-    name: description.name,
-    description: description.description,
-    capabilityDescription: description.capabilityDescription,
-    capabilityTags: description.capabilityTags ?? [],
-    useCaseExamples: description.useCaseExamples ?? [],
-    inputSchema: description.inputSchema,
-    outputSchema: description.outputSchema,
-    examples:
-      Array.isArray(description.examples) && description.examples.length ? description.examples : undefined,
-    audience: description.audience,
-    domain: description.domain,
-    language: description.language,
-    version: description.version,
-  };
-}
-
-function normalizePackageInfoForRoot(value: unknown): Record<string, unknown> | undefined {
-  const packageInfo = asRecord(value);
-  if (Object.keys(packageInfo).length === 0) return undefined;
-  return {
-    manifestUrl: packageInfo.manifestUrl,
-    downloadUrl: packageInfo.downloadUrl,
-    packageHash: packageInfo.packageHash,
-    metadataHash: packageInfo.metadataHash,
-    rootProofRef: packageInfo.rootProofRef,
-    bulletinRef: packageInfo.bulletinRef,
-    version: packageInfo.version,
-    versionScheme: packageInfo.versionScheme,
-    previousVersion: packageInfo.previousVersion,
-    releaseNotesUrl: packageInfo.releaseNotesUrl,
-    createdAt: packageInfo.createdAt,
-    updatedAt: packageInfo.updatedAt,
-    expiresAt: packageInfo.expiresAt,
-  };
-}
-
 function buildResourceMetadata(submission: ResourceRegistrationSubmission, now: string): Record<string, unknown> {
   const oanMetadata = asRecord(submission.didDocument.oanMetadata);
   const resourceDescription = asRecord(oanMetadata.resourceDescription);
@@ -400,107 +269,6 @@ function buildResourceMetadata(submission: ResourceRegistrationSubmission, now: 
   };
 }
 
-function firstVerificationMethodId(submission: ResourceRegistrationSubmission): string | undefined {
-  const methods = submission.didDocument.verificationMethod;
-  if (!Array.isArray(methods)) return undefined;
-  const first = methods[0];
-  return typeof first === "object" && first && "id" in first ? String(first.id) : undefined;
-}
-
-function attachControllerAuthorizationProofNode(
-  submission: ResourceRegistrationSubmission,
-  controllerIdentity: OanIdentityRecord,
-  registrarDid: string,
-): void {
-  if (!submission.didDocumentHash || !submission.metadataHash) {
-    throw new Error("missing_hashes_for_controller_authorization");
-  }
-  const controllerDid = submission.didDocument.oanMetadata?.controllerDid ?? controllerIdentity.did;
-  if (controllerDid !== controllerIdentity.did) {
-    throw new Error("controller_identity_mismatch");
-  }
-  const issuedAt = new Date().toISOString();
-  const verificationMethod = controllerIdentity.verificationMethodId || `${controllerIdentity.did}#key-1`;
-  const challenge = {
-    challengeId: `community-skill-controller-auth-${Date.now().toString(36)}`,
-    resourceDid: submission.resourceDid,
-    controllerDid,
-    publisherDid: submission.didDocument.oanMetadata?.publisherDid,
-    didDocumentHash: submission.didDocumentHash,
-    metadataHash: submission.metadataHash,
-    registrarDid,
-    purpose: "resource-registration-controller-authorization",
-    verificationMethod,
-    nonce: randomBytes(16).toString("hex"),
-    issuedAt,
-    expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
-  };
-  const privateKey = crypto.createPrivateKey({
-    key: controllerIdentity.privateKeyJwk as JsonWebKey,
-    format: "jwk",
-  });
-  submission.controllerAuthorizationProof = {
-    challenge,
-    controllerDidDocument: sanitizeControllerDidDocument(controllerIdentity),
-    proof: {
-      type: "Ed25519Signature2020",
-      creator: controllerIdentity.did,
-      created: issuedAt,
-      proofPurpose: "capabilityInvocation",
-      proofValue: crypto.sign(null, Buffer.from(canonicalJson(challenge), "utf8"), privateKey).toString("base64url"),
-      cryptoSuite: "Ed25519Sha256",
-      hashAlgorithm: "SHA-256",
-      verificationMethod,
-    },
-  };
-}
-
-function sanitizeControllerDidDocument(record: OanIdentityRecord): ResourceRegistrationSubmission["didDocument"] {
-  const didDocument = cleanJson(record.didDocument) as ResourceRegistrationSubmission["didDocument"];
-  didDocument.id = record.did;
-  didDocument.verificationMethod = [
-    {
-      ...(didDocument.verificationMethod?.[0] ?? {
-        id: record.verificationMethodId,
-        type: "Ed25519VerificationKey2020",
-        controller: record.did,
-      }),
-      id: record.verificationMethodId,
-      controller: record.did,
-      cryptoSuite: "Ed25519Sha256",
-      publicKeyJwk: record.publicKeyJwk,
-      publicKeyMultibase: undefined,
-    },
-  ];
-  didDocument.authentication = didDocument.authentication?.length ? didDocument.authentication : [record.verificationMethodId];
-  didDocument.assertionMethod = didDocument.assertionMethod?.length ? didDocument.assertionMethod : [record.verificationMethodId];
-  const capabilityInvocation = didDocument.capabilityInvocation;
-  didDocument.capabilityInvocation =
-    Array.isArray(capabilityInvocation) && capabilityInvocation.length > 0
-      ? capabilityInvocation
-      : [record.verificationMethodId];
-  return removePrivateKeyMaterial(didDocument) as ResourceRegistrationSubmission["didDocument"];
-}
-
-function removePrivateKeyMaterial(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(removePrivateKeyMaterial);
-  if (!value || typeof value !== "object") return value;
-  const output: Record<string, unknown> = {};
-  for (const [key, entryValue] of Object.entries(value as Record<string, unknown>)) {
-    if (
-      key === "privateKeyJwk" ||
-      key === "privateKeyMultibase" ||
-      key === "privateKeyBase58" ||
-      key === "privateKeyHex" ||
-      key === "d"
-    ) {
-      continue;
-    }
-    output[key] = removePrivateKeyMaterial(entryValue);
-  }
-  return output;
-}
-
 function hashJson(value: unknown): string {
   return createHash("sha256").update(canonicalJson(value)).digest("hex");
 }
@@ -514,18 +282,10 @@ function canonicalJson(value: unknown): string {
   return `{${entries.map(([key, entryValue]) => `${JSON.stringify(key)}:${canonicalJson(entryValue)}`).join(",")}}`;
 }
 
-function cleanJson<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
-}
-
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
-}
-
-function arrayOfRecords(value: unknown): Array<Record<string, unknown>> {
-  return Array.isArray(value) ? value.map(asRecord) : [];
 }
 
 function summarizeIdentity(

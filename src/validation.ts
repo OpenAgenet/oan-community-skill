@@ -39,7 +39,7 @@ export function validateRegistrationInput(
     assertSupportedInitialResourceType(submission.resourceType);
     findings.push("resourceDid uses did:oan shape");
     assertDidSubjectMatchesResourceType(resourceDid, submission.resourceType);
-    findings.push("resourceDid subject code matches resourceType");
+    findings.push("resourceType is validated from metadata, not inferred from DID routing-code");
     verifyDidDocumentServiceBindings(submission.didDocument);
     findings.push("protocolBindings reference declared DID services when present");
   } catch (error) {

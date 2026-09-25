@@ -5,6 +5,7 @@
 
 import { OanSkill } from "../src/index.js";
 import { createDefaultProfile, DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS } from "../src/profiles.js";
+import { hashRegistrationPackageBinding } from "@openagenet/oan-sdk-ts";
 import type { ResourceRegistrationSubmission } from "@openagenet/oan-sdk-ts/protocol-types";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
@@ -40,7 +41,7 @@ function createFetchStub(
   }) as typeof fetch;
 }
 
-const resourceDid = "did:oan:SKDM:7YpQm9Kx2VnRb6Ts3WfHa4Cd5Ej8LgNz";
+const resourceDid = "did:oan:K7mQ9:7YpQm9Kx2VnRb6Ts3WfHa4Cd5Ej8LgNz";
 const submission: ResourceRegistrationSubmission = {
   resourceDid,
   resourceType: "skill",
@@ -90,7 +91,7 @@ const fetchStub = createFetchStub({
   },
   "GET https://registrar.example/registrar/root-authorization": {
     body: {
-      registrarDid: "did:oan:INRG:test",
+      registrarDid: "did:oan:P9aBc:2LmNo3PqRsTuVwXyZaBcDeFgHiJkLmNo",
       rootReachable: true,
       authorization: { status: "authorized" },
     },
@@ -170,7 +171,7 @@ const fetchStub = createFetchStub({
         hashAlgorithm: "sha256",
         updatedAt: "2026-06-23T00:00:00Z",
       },
-      rootProof: { rootDid: "did:oan:AGRT:test" },
+      rootProof: { rootDid: "did:oan:R8tZu:9AbCdEfGhJkLmNoPqRsTuVwXyZaBcDeF" },
       createdAt: "2026-06-23T00:00:00Z",
     },
   },
@@ -179,7 +180,7 @@ const fetchStub = createFetchStub({
   },
   "GET https://discovery.example/discovery/root-authorization": {
     body: {
-      discoveryDid: "did:oan:INDS:test",
+      discoveryDid: "did:oan:P9aBc:3LmNo3PqRsTuVwXyZaBcDeFgHiJkLmNo",
       rootReachable: true,
       status: "authorized",
       authorizedDomains: ["technology.software_engineering"],
@@ -187,13 +188,13 @@ const fetchStub = createFetchStub({
   },
   "GET https://discovery.example/discovery/authorized-domains": {
     body: {
-      discoveryDid: "did:oan:INDS:test",
+      discoveryDid: "did:oan:P9aBc:3LmNo3PqRsTuVwXyZaBcDeFgHiJkLmNo",
       authorizedDomains: ["technology.software_engineering"],
     },
   },
   "POST https://discovery.example/discovery/resources/query": {
     body: {
-      discoveryDid: "did:oan:INDS:test",
+      discoveryDid: "did:oan:P9aBc:3LmNo3PqRsTuVwXyZaBcDeFgHiJkLmNo",
       candidates: [{ resourceDid, resourceType: "skill", score: 1 }],
       createdAt: "2026-06-23T00:00:00Z",
     },
@@ -225,19 +226,19 @@ const fetchStub = createFetchStub({
       protocols: [{ value: "mcp", score: 0.8 }],
     },
   },
-  "GET https://indexer.example/v1/subjects/2/did%3Aoan%3AINDS%3Atest/governance-active": {
+  "GET https://indexer.example/v1/subjects/2/did%3Aoan%3AP9aBc%3A3LmNo3PqRsTuVwXyZaBcDeFgHiJkLmNo/governance-active": {
     body: {
       governance_active: true,
       authorized: true,
       subject_type: "discovery",
       subject_type_code: 2,
-      subject_did: "did:oan:INDS:test",
+      subject_did: "did:oan:P9aBc:3LmNo3PqRsTuVwXyZaBcDeFgHiJkLmNo",
       status: "active",
     },
   },
 }, capturedRequests);
 
-const communityResourceDid = "did:oan:SKDM:4YvQm9Kx2VnRb6Ts3WfHa4Cd5Ej8LmNo";
+const communityResourceDid = "did:oan:K7mQ9:4YvQm9Kx2VnRb6Ts3WfHa4Cd5Ej8LmNo";
 const descriptionFetchStub = (async (input: string | URL, init?: RequestInit) => {
   const url = String(input);
   const method = (init?.method ?? "GET").toUpperCase();
@@ -300,7 +301,7 @@ const descriptionFetchStub = (async (input: string | URL, init?: RequestInit) =>
         hashAlgorithm: "sha256",
         updatedAt: "2026-06-23T00:00:00Z",
       },
-      rootProof: { rootDid: "did:oan:AGRT:test" },
+      rootProof: { rootDid: "did:oan:R8tZu:9AbCdEfGhJkLmNoPqRsTuVwXyZaBcDeF" },
       createdAt: "2026-06-23T00:00:00Z",
     });
   }
@@ -360,7 +361,7 @@ assert(gatewayOperator.data?.discoveryReachable, "gateway discovery should be re
 const skill = new OanSkill(
   {
     nodeSelectionMode: "custom-only",
-    registrarDid: "did:oan:INRG:test",
+    registrarDid: "did:oan:P9aBc:2LmNo3PqRsTuVwXyZaBcDeFgHiJkLmNo",
     customRegistrarEndpoints: ["https://registrar.example"],
     customDiscoveryEndpoints: ["https://discovery.example"],
     rootReferenceEndpoint: "https://root.example",
@@ -419,14 +420,13 @@ const registrationRequest = capturedRequests.find((request) => request.key === "
 assert(registrationRequest?.body, "registration should submit a request body");
 const submitted = registrationRequest.body as ResourceRegistrationSubmission & {
   didDocumentHash?: string;
-  subjectControlProof?: { challenge?: { didDocumentHash?: string } };
 };
 assert(/^sha256:[0-9a-f]{64}$/.test(String(submitted.didDocumentHash)), "registration should compute didDocumentHash");
 assert(/^sha256:[0-9a-f]{64}$/.test(String(submitted.metadataHash)), "registration should compute metadataHash");
 assert(/^sha256:[0-9a-f]{64}$/.test(String(submitted.packageHash)), "registration should compute packageHash");
 assert(
-  submitted.subjectControlProof?.challenge?.didDocumentHash === submitted.didDocumentHash,
-  "subjectControlProof should bind didDocumentHash",
+  submitted.subjectControlProof === undefined,
+  "manual community registration should not synthesize a local subjectControlProof",
 );
 assert(
   submitted.didDocument.oanMetadata?.implementationLinks?.[0]?.targetDid === resourceDid,
@@ -474,10 +474,8 @@ try {
       challenge?: { controllerDid?: string; registrarDid?: string; resourceDid?: string };
       controllerDidDocument?: { verificationMethod?: Array<{ cryptoSuite?: string }> };
     };
-    subjectControlProof?: {
-      challenge?: { registrarDid?: string };
-    };
   };
+  assert(generatedSubmitted.didDocument.proof, "generated registration should attach top-level DID Document proof");
   assert(
     generatedSubmitted.controllerAuthorizationProof?.challenge?.controllerDid ===
       generatedRegistration.data?.subjectIdentity?.did,
@@ -489,16 +487,16 @@ try {
     "controllerAuthorizationProof should bind generated resource DID",
   );
   assert(
-    generatedSubmitted.subjectControlProof?.challenge?.registrarDid === "did:oan:INRG:test",
-    "subjectControlProof should bind the configured Registrar DID",
-  );
-  assert(
-    generatedSubmitted.controllerAuthorizationProof?.challenge?.registrarDid === "did:oan:INRG:test",
+    generatedSubmitted.controllerAuthorizationProof?.challenge?.registrarDid === "did:oan:P9aBc:2LmNo3PqRsTuVwXyZaBcDeFgHiJkLmNo",
     "controllerAuthorizationProof should bind the configured Registrar DID",
   );
   assert(
+    generatedSubmitted.packageHash === `sha256:${await hashRegistrationPackageBinding(generatedSubmitted)}`,
+    "generated registration packageHash should bind final didDocumentHash",
+  );
+  assert(
     generatedSubmitted.controllerAuthorizationProof?.controllerDidDocument?.verificationMethod?.[0]?.cryptoSuite ===
-      "Ed25519Sha256",
+      "ed25519-sha256",
     "controllerAuthorizationProof should expose the controller DID document crypto suite",
   );
   assert(
@@ -520,7 +518,7 @@ assert(lifecycle.data?.snapshot.discoveryVisible, "lifecycle visibility mismatch
 
 const governance = await skill.governanceAssist({
   subjectRole: "discovery",
-  subjectDid: "did:oan:INDS:test",
+  subjectDid: "did:oan:P9aBc:3LmNo3PqRsTuVwXyZaBcDeFgHiJkLmNo",
 });
 assert(governance.ok, "governance assist should pass");
 assert(governance.data?.decision.authorized, "governance decision mismatch");
@@ -621,7 +619,7 @@ android-transfer-skill is a community skill for moving files from a macOS workst
 const descriptionSkill = new OanSkill(
   {
     nodeSelectionMode: "custom-only",
-    registrarDid: "did:oan:INRG:test",
+    registrarDid: "did:oan:P9aBc:2LmNo3PqRsTuVwXyZaBcDeFgHiJkLmNo",
     customRegistrarEndpoints: ["https://registrar.example"],
     customDiscoveryEndpoints: ["https://discovery.example"],
     rootReferenceEndpoint: "https://root.example",
@@ -639,7 +637,10 @@ try {
   assert(draft.data?.candidate.name === "android-transfer-skill", "OpenClaw name parse mismatch");
   assert(draft.data?.candidate.resourceType === "skill", "OpenClaw resource type parse mismatch");
   assert(draft.data?.candidate.authorizedDomains[0] === "technology.software_engineering", "domain parse mismatch");
-  assert(draft.data?.submission?.resourceDid.startsWith("did:oan:SK"), "skill draft should use SK DID subject code");
+  assert(
+    /^did:oan:[1-9A-HJ-NP-Za-km-z]{5}:[1-9A-HJ-NP-Za-km-z]{32}$/.test(String(draft.data?.submission?.resourceDid)),
+    "skill draft should use profile-v2 did:oan syntax",
+  );
   const draftInputs = draft.data?.submission?.didDocument.oanMetadata?.resourceDescription?.inputs;
   assert(
     Array.isArray(draftInputs) && draftInputs[0] === "Source file path",
@@ -697,7 +698,10 @@ try {
   assert(draft.ok, "HuggingFace markdown should produce a complete draft");
   assert(draft.data?.candidate.resourceType === "agent_service", "HuggingFace type parse mismatch");
   assert(draft.data?.candidate.protocol === "huggingface-space/gradio", "HuggingFace protocol parse mismatch");
-  assert(draft.data?.submission?.resourceDid.startsWith("did:oan:AG"), "agent_service draft should use AG DID subject code");
+  assert(
+    /^did:oan:[1-9A-HJ-NP-Za-km-z]{5}:[1-9A-HJ-NP-Za-km-z]{32}$/.test(String(draft.data?.submission?.resourceDid)),
+    "agent_service draft should use profile-v2 did:oan syntax",
+  );
   const candidateDescriptionWordCount = descriptionUnitCount(draft.data?.candidate.description);
   const submissionDescriptionWordCount = descriptionUnitCount(
     draft.data?.submission?.didDocument.oanMetadata?.resourceDescription?.description,
