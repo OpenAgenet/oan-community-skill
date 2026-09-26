@@ -387,6 +387,57 @@ const validation = skill.validate({ submission });
 assert(validation.ok, "validation should pass");
 assert(validation.stage === "draft-prepared", "validation stage mismatch");
 
+const tamperedExternalIdentifier = structuredClone(submission);
+tamperedExternalIdentifier.didDocument.oanMetadata = {
+  ...(tamperedExternalIdentifier.didDocument.oanMetadata as any),
+  externalIdentifiers: [
+    {
+      id: "urn:example:skill",
+      resolutionServiceEndpoint: "https://resolver.example/changed",
+    },
+  ],
+};
+const staleExternalIdentifierHash = skill.validate({ submission: tamperedExternalIdentifier });
+assert(!staleExternalIdentifierHash.ok, "external identifier mutation with stale hash should fail");
+assert(
+  staleExternalIdentifierHash.errorMessage === "didDocumentHash does not match the complete DID Document",
+  "external identifier mutation should invalidate complete DID document hash",
+);
+
+const mutatedProof = structuredClone(submission);
+mutatedProof.didDocument.proof = {
+  ...(mutatedProof.didDocument.proof as any),
+  proofValue: "fixture-proof-mutated",
+};
+const staleProofHash = skill.validate({ submission: mutatedProof });
+assert(!staleProofHash.ok, "proof mutation with stale hash should fail");
+assert(
+  staleProofHash.errorMessage === "didDocumentHash does not match the complete DID Document",
+  "proof mutation should invalidate complete DID document hash",
+);
+
+const invalidRoutingCode = structuredClone(submission);
+invalidRoutingCode.resourceDid = "did:oan:A7bC:7YpQm9Kx2VnRb6Ts3WfHa4Cd5Ej8LgNz";
+invalidRoutingCode.didDocument.id = invalidRoutingCode.resourceDid;
+let invalidRoutingRejected = false;
+try {
+  skill.validate({ submission: invalidRoutingCode });
+} catch {
+  invalidRoutingRejected = true;
+}
+assert(invalidRoutingRejected, "invalid routing-code should fail validation");
+
+const legacySemanticDid = structuredClone(submission);
+legacySemanticDid.resourceDid = "did:oan:SKLG:7YpQm9Kx2VnRb6Ts3WfHa4Cd5Ej8LgNz";
+legacySemanticDid.didDocument.id = legacySemanticDid.resourceDid;
+let legacySemanticRejected = false;
+try {
+  skill.validate({ submission: legacySemanticDid });
+} catch {
+  legacySemanticRejected = true;
+}
+assert(legacySemanticRejected, "legacy semantic-code DID should fail validation");
+
 const missingDomainValidation = skill.validate({
   submission: {
     ...submission,
