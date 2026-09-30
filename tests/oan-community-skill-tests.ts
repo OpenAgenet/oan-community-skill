@@ -70,13 +70,10 @@ const submission: ResourceRegistrationSubmission = {
 };
 submission.didDocument.proof = {
   type: "Ed25519Signature2020",
-  creator: `${resourceDid}#key-1`,
   created: "2026-06-23T00:00:00Z",
   proofPurpose: "assertionMethod",
-  proofValue: "fixture-proof",
-  cryptoSuite: "ed25519-sha256",
-  hashAlgorithm: "sha256",
   verificationMethod: `${resourceDid}#key-1`,
+  proofValue: "z3rYH8mN1vP6qT2sX9aBcDeFgHiJkLmNoPqRsTuVwXyZ123456789ABCDEFGHJKLMNP",
 };
 submission.didDocumentHash = `sha256:${await hashDidDocumentWithProof(submission.didDocument)}`;
 
@@ -493,6 +490,12 @@ const submitted = registrationRequest.body as ResourceRegistrationSubmission & {
 assert(/^sha256:[0-9a-f]{64}$/.test(String(submitted.didDocumentHash)), "registration should compute didDocumentHash");
 assert(/^sha256:[0-9a-f]{64}$/.test(String(submitted.metadataHash)), "registration should compute metadataHash");
 assert(/^sha256:[0-9a-f]{64}$/.test(String(submitted.packageHash)), "registration should compute packageHash");
+for (const legacyField of ["creator", "cryptoSuite", "hashAlgorithm"]) {
+  assert(
+    !(legacyField in (submitted.didDocument.proof ?? {})),
+    `manual community registration must not submit legacy proof.${legacyField}`,
+  );
+}
 assert(
   submitted.subjectControlProof === undefined,
   "manual community registration should not synthesize a local subjectControlProof",
