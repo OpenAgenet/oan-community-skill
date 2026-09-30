@@ -710,7 +710,7 @@ try {
   assert(draft.data?.candidate.authorizedDomains[0] === "technology.software_engineering", "domain parse mismatch");
   assert(
     /^did:oan:[1-9A-HJ-NP-Za-km-z]{5}:[1-9A-HJ-NP-Za-km-z]{32}$/.test(String(draft.data?.submission?.resourceDid)),
-    "skill draft should use profile-v2 did:oan syntax",
+    "skill draft should use did-oan did:oan syntax",
   );
   const draftInputs = draft.data?.submission?.didDocument.oanMetadata?.resourceDescription?.inputs;
   assert(
@@ -771,7 +771,7 @@ try {
   assert(draft.data?.candidate.protocol === "huggingface-space/gradio", "HuggingFace protocol parse mismatch");
   assert(
     /^did:oan:[1-9A-HJ-NP-Za-km-z]{5}:[1-9A-HJ-NP-Za-km-z]{32}$/.test(String(draft.data?.submission?.resourceDid)),
-    "agent_service draft should use profile-v2 did:oan syntax",
+    "agent_service draft should use did-oan did:oan syntax",
   );
   const candidateDescriptionWordCount = descriptionUnitCount(draft.data?.candidate.description);
   const submissionDescriptionWordCount = descriptionUnitCount(

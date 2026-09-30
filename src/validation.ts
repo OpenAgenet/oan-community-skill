@@ -107,7 +107,7 @@ export function validateRegistrationInput(
       ok: false,
       stage: "failed-validation",
       errorCategory: "input error",
-      errorMessage: "didDocument.proof is required for profile-v2 registration",
+      errorMessage: "didDocument.proof is required for did-oan registration",
       suggestedNextActions: ["Generate the top-level DID Document proof before submission."],
     };
   }
