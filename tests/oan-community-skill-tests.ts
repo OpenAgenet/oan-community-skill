@@ -541,7 +541,7 @@ try {
   const generatedSubmitted = generatedRequest.body as ResourceRegistrationSubmission & {
     controllerAuthorizationProof?: {
       challenge?: { controllerDid?: string; registrarDid?: string; resourceDid?: string };
-      controllerDidDocument?: { verificationMethod?: Array<{ cryptoSuite?: string }> };
+      controllerDidDocument?: { verificationMethod?: Array<Record<string, unknown>> };
     };
   };
   assert(generatedSubmitted.didDocument.proof, "generated registration should attach top-level DID Document proof");
@@ -564,9 +564,8 @@ try {
     "generated registration packageHash should bind final didDocumentHash",
   );
   assert(
-    generatedSubmitted.controllerAuthorizationProof?.controllerDidDocument?.verificationMethod?.[0]?.cryptoSuite ===
-      "ed25519-sha256",
-    "controllerAuthorizationProof should expose the controller DID document crypto suite",
+    !("cryptoSuite" in (generatedSubmitted.controllerAuthorizationProof?.controllerDidDocument?.verificationMethod?.[0] ?? {})),
+    "controllerAuthorizationProof must not expose legacy controller DID document crypto suite",
   );
   assert(
     !JSON.stringify(generatedSubmitted).includes("privateKeyJwk"),
