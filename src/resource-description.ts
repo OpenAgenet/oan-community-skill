@@ -22,6 +22,7 @@ import type {
   ResourceType,
 } from "@openagenet/oan-sdk-ts/protocol-types";
 import { registerResourceWithSkill } from "./registration.js";
+import { DEFAULT_COMMUNITY_REGISTRAR_DID } from "./registration.js";
 import type {
   CommunityRegistrableResourceType,
   OanSkillProfile,
@@ -48,7 +49,7 @@ export async function draftRegistrationFromResourceDescriptionWithSkill(
     };
 
     if (missingInputs.length === 0) {
-      output.submission = await createSubmission(candidate, input);
+      output.submission = await createSubmission(candidate, input, DEFAULT_COMMUNITY_REGISTRAR_DID);
     }
 
     return {
@@ -78,6 +79,7 @@ export async function registerFromResourceDescriptionWithSkill(
   input: ResourceDescriptionRegistrationInput,
   options: { fetchImpl?: typeof fetch } = {},
 ): Promise<SkillActionResult<ResourceDescriptionRegistrationOutput>> {
+  const registrarDid = profile.registrarDid ?? DEFAULT_COMMUNITY_REGISTRAR_DID;
   const draft = await draftRegistrationFromResourceDescriptionWithSkill(input);
   if (!draft.ok || !draft.data?.submission) {
     return {
@@ -101,7 +103,8 @@ export async function registerFromResourceDescriptionWithSkill(
     };
   }
 
-  const registration = await registerResourceWithSkill(profile, { submission: draft.data.submission }, options);
+  const submission = await createSubmission(draft.data.candidate, input, registrarDid);
+  const registration = await registerResourceWithSkill(profile, { submission, registrarDid }, options);
   return {
     ...registration,
     data: {
@@ -252,13 +255,14 @@ export function parseResourceDescription(
 async function createSubmission(
   candidate: ResourceDescriptionRegistrationCandidate,
   input: ResourceDescriptionRegistrationInput,
+  registrarDid: string,
 ): Promise<ResourceRegistrationSubmission> {
   const subject = await ensureSubjectIdentityNode({
     label: input.subjectLabel ?? "OAN Community Publisher",
     identityDir: input.identityDir,
   });
   const agent = input.reuseAgentIdentity
-    ? await ensureReusableAgentIdentity(candidate, subject.record.did, subject.identityDir)
+    ? await ensureReusableAgentIdentity(candidate, subject.record.did, subject.identityDir, registrarDid)
     : await createAgentIdentityNode({
         label: candidate.name,
         resourceType: candidate.resourceType,
@@ -270,6 +274,7 @@ async function createSubmission(
         serviceEndpoint: candidate.endpoint,
         manifestUrl: candidate.manifestUrl,
         schemaUrl: candidate.schemaUrl,
+        registrarDid,
       });
   const submission = createRegistrationSubmissionFromIdentity(agent.record, {
     endpoint: candidate.endpoint,
@@ -283,8 +288,9 @@ async function createSubmission(
   });
   enrichSubmission(submission, candidate);
   return finalizeRegistrationSubmissionWithProof(submission, {
+    resourceIdentity: agent.record,
     controllerIdentity: subject.record,
-    registrarDid: "did:oan:P9aBc:2LmNo3PqRsTuVwXyZaBcDeFgHiJkLmNo",
+    registrarDid,
   });
 }
 
@@ -292,11 +298,13 @@ async function ensureReusableAgentIdentity(
   candidate: ResourceDescriptionRegistrationCandidate,
   ownerSubjectDid: string,
   identityDir: string,
+  registrarDid: string,
 ): Promise<{ record: OanIdentityRecord; identityDir: string }> {
   const snapshot = await loadIdentityStoreSnapshot(identityDir);
+  const registrarRoutingCode = routingCodeFromDid(registrarDid);
   const existing =
-    snapshot.agents.find((record) => record.id === snapshot.defaultAgentId) ??
-    snapshot.agents.find((record) => record.profile.resourceType === candidate.resourceType);
+    snapshot.agents.find((record) => record.id === snapshot.defaultAgentId && routingCodeFromDid(record.did) === registrarRoutingCode) ??
+    snapshot.agents.find((record) => record.profile.resourceType === candidate.resourceType && routingCodeFromDid(record.did) === registrarRoutingCode);
   if (!existing) {
     return createAgentIdentityNode({
       label: candidate.name,
@@ -309,6 +317,7 @@ async function ensureReusableAgentIdentity(
       serviceEndpoint: candidate.endpoint,
       manifestUrl: candidate.manifestUrl,
       schemaUrl: candidate.schemaUrl,
+      registrarDid,
     });
   }
   existing.profile = {
@@ -334,6 +343,11 @@ async function ensureReusableAgentIdentity(
   };
   await saveIdentityStoreSnapshot(snapshot, identityDir);
   return { record: existing, identityDir };
+}
+
+function routingCodeFromDid(did: string): string | undefined {
+  const [, , routingCode] = did.split(":");
+  return routingCode;
 }
 
 function enrichSubmission(
@@ -377,8 +391,6 @@ function enrichSubmission(
     ...metadata.packageInfo,
     manifestUrl: candidate.manifestUrl,
     downloadUrl: candidate.downloadUrl,
-    sourcePageUrl: candidate.packageUrl,
-    repositoryUrl: candidate.repositoryUrl,
     version: candidate.version,
     versionScheme: isSemver(candidate.version) ? "semver" : "upstream",
     packageHash: `sha256:${hashJson({

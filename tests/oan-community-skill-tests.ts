@@ -509,7 +509,7 @@ assert(
   "implementationLinks should default targetType to resourceType",
 );
 assert(
-  submitted.didDocument.oanMetadata?.credentialRequirements?.[0]?.type === "OANAccessCredential",
+  submitted.didDocument.oanMetadata?.credentialRequirements?.[0]?.credentialType === "OANAccessCredential",
   "credential requirements should keep protocol-compatible type",
 );
 assert(

@@ -30,15 +30,15 @@ import {
 } from "@openagenet/oan-sdk-ts/identity-store-node";
 import { createHash } from "node:crypto";
 
-const DEFAULT_COMMUNITY_REGISTRAR_DID = "did:oan:P9aBc:2LmNo3PqRsTuVwXyZaBcDeFgHiJkLmNo";
+export const DEFAULT_COMMUNITY_REGISTRAR_DID = "did:oan:P9aBc:2LmNo3PqRsTuVwXyZaBcDeFgHiJkLmNo";
 
 export async function registerResourceWithSkill(
   profile: OanSkillProfile,
   input: RegistrationSkillInput,
   options: { fetchImpl?: typeof fetch } = {},
 ): Promise<SkillActionResult<RegistrationSkillOutput>> {
-  const prepared = await prepareSubmission(input);
   const registrarDid = input.registrarDid ?? profile.registrarDid ?? DEFAULT_COMMUNITY_REGISTRAR_DID;
+  const prepared = await prepareSubmission(input, registrarDid);
   const normalizedSubmission = await finalizeRegistrationSubmissionWithControllerProof(prepared, registrarDid);
   const validation = validateRegistrationInput({ submission: normalizedSubmission });
   if (!validation.ok) {
@@ -93,6 +93,7 @@ export async function registerResourceWithSkill(
 
 async function prepareSubmission(
   input: RegistrationSkillInput,
+  registrarDid: string,
 ): Promise<{
   submission: ResourceRegistrationSubmission;
   subjectIdentity?: OanIdentityRecord;
@@ -131,6 +132,7 @@ async function prepareSubmission(
       serviceEndpoint: input.generateIdentity.endpoint,
       manifestUrl: input.generateIdentity.manifestUrl,
       schemaUrl: input.generateIdentity.schemaUrl,
+      registrarDid,
     });
     agentIdentity = created.record;
   }
@@ -154,10 +156,14 @@ async function prepareSubmission(
 async function finalizeRegistrationSubmissionWithControllerProof(prepared: {
   submission: ResourceRegistrationSubmission;
   subjectIdentity?: OanIdentityRecord;
+  agentIdentity?: OanIdentityRecord;
 }, registrarDid: string): Promise<ResourceRegistrationSubmission> {
   const submission = await finalizeRegistrationSubmission(prepared.submission);
   if (prepared.subjectIdentity) {
     return finalizeRegistrationSubmissionWithProof(submission, {
+      resourceIdentity: prepared.agentIdentity ?? (() => {
+        throw new Error("resource_identity_missing");
+      })(),
       controllerIdentity: prepared.subjectIdentity,
       registrarDid,
     });
