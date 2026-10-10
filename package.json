@@ -32,7 +32,7 @@
     "test": "node ./node_modules/tsx/dist/cli.mjs tests/oan-community-skill-tests.ts"
   },
   "dependencies": {
-    "@openagenet/oan-sdk-ts": "file:../oan-sdk-ts"
+    "@openagenet/oan-sdk-ts": "1.1.0"
   },
   "devDependencies": {
     "@types/node": "^26.0.0",

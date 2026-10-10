@@ -728,7 +728,7 @@ try {
     markdown: openClawMarkdown,
     identityDir: openClawIdentityDir,
   });
-  assert(registeredFromDescription.ok, "registration from resource description should pass");
+  assert(registeredFromDescription.ok, `registration from resource description should pass: ${JSON.stringify(registeredFromDescription)}`);
   assert(
     registeredFromDescription.data?.candidate.name === "android-transfer-skill",
     "registration should return parsed candidate",
@@ -941,7 +941,7 @@ try {
   assert(firstVersion.ok && secondVersion.ok, "versioned MCP drafts should pass");
   assert(
     firstVersion.data?.submission?.resourceDid === secondVersion.data?.submission?.resourceDid,
-    "versioned MCP drafts should reuse one resource DID",
+    `versioned MCP drafts should reuse one resource DID: ${firstVersion.data?.submission?.resourceDid} != ${secondVersion.data?.submission?.resourceDid}`,
   );
   assert(firstVersion.data?.submission?.packageVersion === "0.6.11", "first MCP packageVersion mismatch");
   assert(secondVersion.data?.submission?.packageVersion === "0.6.12", "second MCP packageVersion mismatch");

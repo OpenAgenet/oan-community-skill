@@ -301,10 +301,19 @@ async function ensureReusableAgentIdentity(
   registrarDid: string,
 ): Promise<{ record: OanIdentityRecord; identityDir: string }> {
   const snapshot = await loadIdentityStoreSnapshot(identityDir);
-  const registrarRoutingCode = routingCodeFromDid(registrarDid);
+  const registrarRoutingCode = registrarRoutingCodeFromDid(registrarDid);
   const existing =
     snapshot.agents.find((record) => record.id === snapshot.defaultAgentId && routingCodeFromDid(record.did) === registrarRoutingCode) ??
-    snapshot.agents.find((record) => record.profile.resourceType === candidate.resourceType && routingCodeFromDid(record.did) === registrarRoutingCode);
+    snapshot.agents.find(
+      (record) =>
+        record.profile.resourceType === candidate.resourceType &&
+        routingCodeFromDid(record.did) === registrarRoutingCode,
+    ) ??
+    snapshot.agents.find(
+      (record) =>
+        record.profile.label === candidate.name &&
+        routingCodeFromDid(record.did) === registrarRoutingCode,
+    );
   if (!existing) {
     return createAgentIdentityNode({
       label: candidate.name,
@@ -346,8 +355,17 @@ async function ensureReusableAgentIdentity(
 }
 
 function routingCodeFromDid(did: string): string | undefined {
-  const [, , routingCode] = did.split(":");
-  return routingCode;
+  const parts = did.split(":");
+  return parts.length === 4 && parts[0] === "did" && parts[1] === "oan"
+    ? parts[2]
+    : undefined;
+}
+
+function registrarRoutingCodeFromDid(did: string): string | undefined {
+  const parts = did.split(":");
+  return parts.length === 4 && parts[0] === "did" && parts[1] === "oan"
+    ? parts[3].slice(0, 5)
+    : undefined;
 }
 
 function enrichSubmission(

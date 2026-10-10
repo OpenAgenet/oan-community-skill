@@ -12,12 +12,12 @@ import {
   verifyDidDocumentServiceBindings,
   verifyHashLike,
 } from "@openagenet/oan-sdk-ts";
-import { createHash } from "node:crypto";
 import type {
   SkillActionResult,
   ValidationSkillInput,
   ValidationSkillOutput,
 } from "./types.js";
+import { createHash } from "node:crypto";
 
 export function validateRegistrationInput(
   input: ValidationSkillInput,
@@ -121,8 +121,17 @@ export function validateRegistrationInput(
       suggestedNextActions: ["Recompute the complete DID Document hash after proof generation."],
     };
   }
+  const hashDocument = JSON.parse(JSON.stringify(submission.didDocument)) as Record<string, unknown>;
+  const resourceDescription = (
+    (hashDocument.oanMetadata as Record<string, unknown> | undefined)?.resourceDescription
+  ) as Record<string, unknown> | undefined;
+  if (resourceDescription) {
+    delete resourceDescription.useCases;
+    delete resourceDescription.inputs;
+    delete resourceDescription.outputs;
+  }
   const expectedDidDocumentHash = `sha256:${createHash("sha256")
-    .update(canonicalJson(submission.didDocument))
+    .update(canonicalJson(hashDocument))
     .digest("hex")}`;
   if (submission.didDocumentHash !== expectedDidDocumentHash) {
     return {
