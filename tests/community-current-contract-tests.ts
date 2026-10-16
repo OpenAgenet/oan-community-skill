@@ -424,6 +424,20 @@ try {
   const missingCreator = structuredClone(posts.at(-1)!);
   delete missingCreator.controllerAuthorizationProof!.proof.creator;
   assert.equal(skill.validate({ submission: missingCreator }).errorCategory, "controller authorization error");
+
+  const missingControllerDid = structuredClone(posts.at(-1)!);
+  missingControllerDid.didDocument.controller = saved.did;
+  delete missingControllerDid.didDocument.oanMetadata?.controllerDid;
+  const missingControllerDidResult = skill.validate({ submission: missingControllerDid });
+  assert.equal(missingControllerDidResult.ok, false);
+  assert.equal(missingControllerDidResult.errorMessage, "external_controller_metadata_required");
+
+  const multipleControllers = structuredClone(posts.at(-1)!);
+  multipleControllers.didDocument.controller = [saved.did, "did:oan:HmxwA:2LmNo3PqRsTuVwXyZaBcDeFgHiJkLmNo"];
+  multipleControllers.didDocument.oanMetadata!.controllerDid = saved.did;
+  const multipleControllersResult = skill.validate({ submission: multipleControllers });
+  assert.equal(multipleControllersResult.ok, false);
+  assert.equal(multipleControllersResult.errorMessage, "multiple_controllers_not_supported");
   for (const field of ["resourceDid", "controllerDid", "didDocumentHash", "metadataHash", "publisherDid", "purpose", "registrarDid", "nonce", "expiresAt"] as const) {
     const invalid = structuredClone(posts.at(-1)!);
     (invalid.controllerAuthorizationProof!.challenge as unknown as Record<string, unknown>)[field] = field === "nonce" ? "" : "invalid";
