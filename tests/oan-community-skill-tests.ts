@@ -64,6 +64,10 @@ const submission: ResourceRegistrationSubmission = {
   resourceType: "skill",
   didDocument: {
     id: resourceDid,
+    verificationMethod: [],
+    authentication: [],
+    assertionMethod: [],
+    service: [],
     oanMetadata: {
       subjectType: "skill",
       resourceType: "skill",
@@ -72,6 +76,7 @@ const submission: ResourceRegistrationSubmission = {
         name: "Skill",
         description: "Review contracts",
         capabilityTags: ["legal.contract.review"],
+        useCaseExamples: [],
       },
       capabilityTags: ["legal.contract.review"],
       implementationLinks: [{ relation: "implements" }],

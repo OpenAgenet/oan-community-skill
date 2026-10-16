@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readFile, readdir } from "node:fs/promises";
+import { mkdtemp, rm, readFile, readdir, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -102,6 +103,19 @@ const mock = (async (input: string | URL | Request, init?: RequestInit) => {
   if (url.endsWith("/registrar/status")) return json({ registrarDid });
   if (url.endsWith("/resources/register")) {
     posts.push(body);
+    const wireMetadata = body.didDocument.oanMetadata;
+    assert(Array.isArray(wireMetadata.capabilityTags), "Rust serializes default metadata capabilityTags");
+    assert(Array.isArray(wireMetadata.resourceDescription.capabilityTags), "Rust serializes default description capabilityTags");
+    assert(Array.isArray(wireMetadata.resourceDescription.useCaseExamples), "Rust serializes default useCaseExamples");
+    // Run with the oan-crypto hash_did_document example to verify the real
+    // Rust deserialize/serialize/hash contract rather than a JS hash mock.
+    if (process.env.OAN_RUST_HASH_DID_DOCUMENT) {
+      const documentPath = join(dir, "public-did-for-rust.json");
+      await writeFile(documentPath, JSON.stringify(body.didDocument), "utf8");
+      const rust = spawnSync(process.env.OAN_RUST_HASH_DID_DOCUMENT, [documentPath], { encoding: "utf8" });
+      assert.equal(rust.status, 0, rust.stderr);
+      assert.equal(body.didDocumentHash, rust.stdout.trim(), "actual Rust DID hash must match signed submission");
+    }
     for (const field of ["credentialRequirements", "implementationLinks", "protocolBindings", "externalIdentifiers"]) {
       assert.notDeepEqual(body.didDocument.oanMetadata[field], [],
         `Rust omits empty ${field}; signing and hashing must use that same wire shape`);
@@ -324,6 +338,18 @@ try {
     });
   const controller = await register("controller", "Controller");
   assert(controller.ok, controller.errorMessage ?? "controller failed");
+  const validController = structuredClone(posts.at(-1)!);
+  for (const field of ["capabilityTags", "useCaseExamples"] as const) {
+    const incomplete = structuredClone(validController);
+    delete incomplete.didDocument.oanMetadata!.resourceDescription![field];
+    const validation = skill.validate({ submission: incomplete });
+    assert(!validation.ok, `missing ${field} must fail before submission`);
+    assert.equal(validation.errorCategory, "wire compatibility error");
+    assert(validation.errorMessage?.includes(`resourceDescription.${field}`));
+  }
+  assert.deepEqual(validController.didDocument.oanMetadata!.capabilityTags, []);
+  assert.deepEqual(validController.didDocument.oanMetadata!.resourceDescription!.capabilityTags, []);
+  assert.deepEqual(validController.didDocument.oanMetadata!.resourceDescription!.useCaseExamples, []);
   const controllerId = controller.data!.agentIdentity!.id;
   const saved = (await loadIdentityStoreSnapshot(dir)).subjects.find(
     (r) => r.id === controllerId,

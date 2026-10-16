@@ -570,6 +570,22 @@ function enrichDidDocumentMetadata(
   const metadata = {
     ...asRecord(didDocument.oanMetadata),
   };
+  // serde(default) Vec fields without skip_serializing_if must be present,
+  // even when empty. This is especially common for dedicated controllers.
+  metadata.capabilityTags ??= [];
+  metadata.authorizedDomains ??= [];
+  if (metadata.resourceDescription) {
+    const description = { ...asRecord(metadata.resourceDescription) };
+    description.capabilityTags ??= [];
+    description.useCaseExamples ??= [];
+    metadata.resourceDescription = description;
+  }
+  if (metadata.agentDescription) {
+    const description = { ...asRecord(metadata.agentDescription) };
+    description.capabilityTags ??= [];
+    description.useCaseExamples ??= [];
+    metadata.agentDescription = description;
+  }
   const packageInfo: Record<string, unknown> = {
     ...asRecord(metadata.packageInfo),
     version: submission.packageVersion,
@@ -599,6 +615,10 @@ function enrichDidDocumentMetadata(
   }
   return {
     ...didDocument,
+    verificationMethod: didDocument.verificationMethod ?? [],
+    authentication: didDocument.authentication ?? [],
+    assertionMethod: didDocument.assertionMethod ?? [],
+    service: didDocument.service ?? [],
     oanMetadata: metadata,
   };
 }

@@ -124,6 +124,32 @@ export function validateRegistrationInput(
       suggestedNextActions: ["Recompute the complete DID Document hash after proof generation."],
     };
   }
+  const metadata = submission.didDocument.oanMetadata;
+  const defaultVectors: Array<[string, unknown]> = [
+    ["verificationMethod", submission.didDocument.verificationMethod],
+    ["authentication", submission.didDocument.authentication],
+    ["assertionMethod", submission.didDocument.assertionMethod],
+    ["service", submission.didDocument.service],
+    ["oanMetadata.capabilityTags", metadata?.capabilityTags],
+    ["oanMetadata.authorizedDomains", metadata?.authorizedDomains],
+  ];
+  if (metadata?.resourceDescription) defaultVectors.push(
+    ["oanMetadata.resourceDescription.capabilityTags", metadata.resourceDescription.capabilityTags],
+    ["oanMetadata.resourceDescription.useCaseExamples", metadata.resourceDescription.useCaseExamples],
+  );
+  if (metadata?.agentDescription) {
+    const agent = metadata.agentDescription as Record<string, unknown>;
+    defaultVectors.push(
+      ["oanMetadata.agentDescription.capabilityTags", agent.capabilityTags],
+      ["oanMetadata.agentDescription.useCaseExamples", agent.useCaseExamples],
+    );
+  }
+  const missingDefaults = defaultVectors.filter(([, value]) => !Array.isArray(value)).map(([path]) => path);
+  if (missingDefaults.length) return {
+    ok: false, stage: "failed-validation", errorCategory: "wire compatibility error",
+    errorMessage: `Rust DID serialization adds default arrays: ${missingDefaults.join(", ")}`,
+    suggestedNextActions: ["Regenerate and re-sign the same resource DID with these default arrays present; do not edit a signed draft or create a new identity."],
+  };
   const hashDocument = JSON.parse(JSON.stringify(submission.didDocument)) as Record<string, unknown>;
   const resourceDescription = (
     (hashDocument.oanMetadata as Record<string, unknown> | undefined)?.resourceDescription
