@@ -26,10 +26,9 @@ import type {
 } from "./types.js";
 import { validateRegistrationInput } from "./validation.js";
 import {
-  loadIdentityStoreSnapshot,
-  saveIdentityStoreSnapshot,
   getDefaultIdentityStoreDir,
 } from "@openagenet/oan-sdk-ts/identity-store-node";
+import { loadIdentityStoreSnapshot, saveIdentityStoreSnapshot } from "./registration-state.js";
 import { createHash } from "node:crypto";
 import { resolveRegistrarDid } from "./registrar.js";
 import { saveRegistrationFiles } from "./registration-files.js";
@@ -89,16 +88,18 @@ export async function registerResourceWithSkill(
       options,
     );
     const prepared = await prepareSubmission(input, registrarDid);
-    if (prepared.agentIdentity)
+    const resourceRecord = prepared.persistedIdentity ?? prepared.agentIdentity;
+    if (resourceRecord)
       localIdentity = {
-        id: prepared.agentIdentity.id,
-        did: prepared.agentIdentity.did,
+        id: resourceRecord.id,
+        did: resourceRecord.did,
       };
     const normalizedSubmission =
       await finalizeRegistrationSubmissionWithControllerProof(
         prepared,
         registrarDid,
       );
+    assertSubmissionProofFresh(normalizedSubmission);
     const validation = validateRegistrationInput({
       submission: normalizedSubmission,
     });
@@ -134,6 +135,17 @@ export async function registerResourceWithSkill(
         );
       }
       const registration = await client.registerResource(normalizedSubmission);
+      try {
+        await markIdentityRegistrationState(
+          prepared.persistedIdentity ?? prepared.agentIdentity,
+          input.identityDir ?? getDefaultIdentityStoreDir(),
+          "registered",
+        );
+      } catch {
+        // The Registrar has already accepted the write. State bookkeeping is
+        // best-effort and must not turn a successful registration into a
+        // reported submission failure.
+      }
       let files: RegistrationSkillOutput["files"];
       let fileSaveError: string | undefined;
       try {
@@ -147,7 +159,17 @@ export async function registerResourceWithSkill(
       }
       const observed = await client.observeLifecycle(
         normalizedSubmission.resourceDid,
-      );
+      ).catch((error: unknown) => ({
+        resourceDid: normalizedSubmission.resourceDid,
+        registrarAccepted: true,
+        discoveryVisible: false,
+        rootObserved: false,
+        cdnObserved: false,
+        stage: "accepted-by-registrar" as const,
+        observations: [
+          `Registrar accepted submission; follow-up observation failed: ${error instanceof Error ? error.message : String(error)}`,
+        ],
+      }));
       const lifecycle =
         observed.registrarAccepted ||
         observed.discoveryVisible ||
@@ -174,7 +196,7 @@ export async function registerResourceWithSkill(
           registration,
           lifecycle,
           subjectIdentity: summarizeIdentity(prepared.subjectIdentity),
-          agentIdentity: summarizeIdentity(prepared.agentIdentity),
+          agentIdentity: summarizeIdentity(resourceRecord),
         },
         verificationFindings: validation.verificationFindings,
         suggestedNextActions: [
@@ -190,13 +212,37 @@ export async function registerResourceWithSkill(
       };
     } catch (error) {
       if (error instanceof OanHttpError) {
+        const body =
+          error.body && typeof error.body === "object"
+            ? (error.body as Record<string, unknown>)
+            : { message: String(error.body ?? "") };
+        try {
+          await markIdentityRegistrationState(
+            prepared.persistedIdentity ?? prepared.agentIdentity,
+            input.identityDir ?? getDefaultIdentityStoreDir(),
+            "failed",
+            body,
+          );
+        } catch {
+          // Preserve the Registrar's rejection and diagnostics if the local
+          // state store is unavailable.
+        }
+        const serverCode = typeof body.code === "string" ? body.code : typeof body.error === "string" ? body.error : undefined;
         return {
           ok: false,
           stage: "failed-submission",
           localIdentity,
           identityDir: input.identityDir ?? getDefaultIdentityStoreDir(),
           errorCategory: "registration rejection",
-          errorMessage: JSON.stringify(error.body),
+          errorMessage: JSON.stringify({
+            code: serverCode ?? "registration_rejected",
+            status: error.status,
+            resourceDid: normalizedSubmission.resourceDid,
+            registrarDid,
+            submittedDidDocumentHash: normalizedSubmission.didDocumentHash,
+            protocolVersion: body.protocolVersion,
+            details: body,
+          }),
           verificationFindings: validation.verificationFindings,
           suggestedNextActions: [
             "Inspect the Registrar/Root rejection body and fix the submission material.",
@@ -240,12 +286,23 @@ async function prepareSubmission(
   submission: ResourceRegistrationSubmission;
   subjectIdentity?: OanIdentityRecord;
   agentIdentity?: OanIdentityRecord;
+  persistedIdentity?: OanIdentityRecord;
 }> {
   if (input.submission) {
+    const directory = input.identityDir ?? getDefaultIdentityStoreDir();
+    const snapshot = await loadIdentityStoreSnapshot(directory);
+    const resourceIdentity =
+      input.resourceIdentity ??
+      [...snapshot.agents, ...snapshot.subjects].find(
+        (record) => record.did === input.submission!.resourceDid,
+      );
     return {
       submission: input.submission,
       subjectIdentity: input.controllerIdentity ?? input.resourceIdentity,
+      // Re-sign only when the caller explicitly provides local key material.
+      // Merely finding a stored identity must not mutate a reviewed draft.
       agentIdentity: input.resourceIdentity,
+      persistedIdentity: resourceIdentity,
     };
   }
   if (!input.generateIdentity) {
@@ -284,6 +341,18 @@ async function prepareSubmission(
         throw new Error("registered_controller_identity_required_for_reuse");
     }
   } else {
+    const existing = [...snapshot.agents, ...snapshot.subjects].find(
+      (record) =>
+        record.profile.label === input.generateIdentity!.resourceLabel &&
+        record.profile.resourceType === input.generateIdentity!.resourceType &&
+        record.profile.metadata?.registrarDid === registrarDid &&
+        (record.didDocument.oanMetadata?.controllerDid ?? record.did) ===
+          (selectedSubject?.did ?? record.did) &&
+        record.profile.metadata?.registrationState !== "registered",
+    );
+    if (existing) {
+      agentIdentity = existing;
+    } else {
     const record = await createOanIdentityRecord({
       kind:
         input.generateIdentity.resourceType === "controller"
@@ -299,12 +368,14 @@ async function prepareSubmission(
       manifestUrl: input.generateIdentity.manifestUrl,
       schemaUrl: input.generateIdentity.schemaUrl,
       registrarDid,
+      metadata: { registrationState: "pending", registrarDid },
     });
     agentIdentity = record;
     await saveIdentityStoreSnapshot(
       upsertIdentityRecord(snapshot, record),
       identityDir,
     );
+    }
   }
 
   const submission = createRegistrationSubmissionFromIdentity(agentIdentity, {
@@ -323,6 +394,38 @@ async function prepareSubmission(
     subjectIdentity: selectedSubject ?? agentIdentity,
     agentIdentity,
   };
+}
+
+async function markIdentityRegistrationState(
+  identity: OanIdentityRecord | undefined,
+  identityDir: string,
+  state: "registered" | "failed",
+  error?: unknown,
+): Promise<void> {
+  if (!identity) return;
+  const snapshot = await loadIdentityStoreSnapshot(identityDir);
+  const records = [...snapshot.subjects, ...snapshot.agents, ...snapshot.nodes];
+  const current = records.find((record) => record.id === identity.id);
+  if (!current) return;
+  current.profile.metadata = {
+    ...(current.profile.metadata ?? {}),
+    registrationState: current.profile.metadata?.registrationState === "registered"
+      ? "registered" : state,
+    lastRegistrationError: error,
+    registrationStateUpdatedAt: new Date().toISOString(),
+  };
+  await saveIdentityStoreSnapshot(snapshot, identityDir);
+}
+
+function assertSubmissionProofFresh(submission: ResourceRegistrationSubmission): void {
+  const proofs = [submission.subjectControlProof, submission.controllerAuthorizationProof]
+    .filter(Boolean) as Array<{ challenge?: { expiresAt?: string } }>;
+  for (const proof of proofs) {
+    const expiresAt = proof.challenge?.expiresAt;
+    if (expiresAt && (!Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now())) {
+      throw new Error("registration_proof_expired_before_submission");
+    }
+  }
 }
 
 async function finalizeRegistrationSubmissionWithControllerProof(

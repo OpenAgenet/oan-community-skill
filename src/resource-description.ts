@@ -7,10 +7,9 @@ import { resolve } from "node:path";
 import { objectInput, stringInput, stringsInput, booleanInput, accessUrlInput } from "./input.js";
 import {
   createAgentIdentityNode,
-  loadIdentityStoreSnapshot,
-  saveIdentityStoreSnapshot,
   getDefaultIdentityStoreDir,
 } from "@openagenet/oan-sdk-ts/identity-store-node";
+import { loadIdentityStoreSnapshot, saveIdentityStoreSnapshot } from "./registration-state.js";
 import {
   createRegistrationSubmissionFromIdentity,
   finalizeRegistrationSubmissionWithProof,
@@ -122,7 +121,9 @@ export async function registerFromResourceDescriptionWithSkill(
   const registration = await registerResourceWithSkill(profile, { submission, identityDir:input.identityDir, registrarDid: input.registrarDid }, options);
   registration.identityDir = draft.data.identityDir;
   registration.localIdentity = draft.data.agentIdentity;
-  const snapshot = await loadIdentityStoreSnapshot(input.identityDir);
+  const snapshot = await loadIdentityStoreSnapshot(
+    input.identityDir ?? getDefaultIdentityStoreDir(),
+  );
   const resource = snapshot.agents.find(record => record.did === submission.resourceDid);
   const owner = [...snapshot.subjects,...snapshot.agents].find(record => record.did === submission.didDocument.oanMetadata?.controllerDid);
   return {
@@ -269,7 +270,7 @@ export function parseResourceDescription(
     resourceType,
     name: cleanupText(inferredName),
     description: originalDescription,
-    version: cleanupText(fields.version ?? input.overrides?.version ?? "1.0.0"),
+    version: normalizeVersion(fields.version ?? input.overrides?.version ?? extractVersion(body) ?? "1.0.0"),
     endpoint,
     protocol,
     manifestUrl,
@@ -325,21 +326,11 @@ async function createSubmission(
       routingCodeFromDid(selectedAgent.did) !== registrarRoutingCodeFromDid(registrarDid))) {
     throw new Error("resource_identity_type_or_registrar_mismatch");
   }
-  const agent = selectedAgent ? {record:selectedAgent} : input.reuseAgentIdentity
-    ? await ensureReusableAgentIdentity(candidate, controller?.did, identityDir, registrarDid)
-    : await createAgentIdentityNode({
-        label: candidate.name,
-        resourceType: candidate.resourceType,
-        ownerSubjectDid: controller?.did,
-        identityDir,
-        description: candidate.description,
-        capabilityTags: candidate.capabilityTags,
-        authorizedDomains: candidate.authorizedDomains,
-        serviceEndpoint: candidate.endpoint,
-        manifestUrl: candidate.manifestUrl,
-        schemaUrl: candidate.schemaUrl,
-        registrarDid,
-      });
+  const agent = selectedAgent ? {record:selectedAgent} :
+    await ensureReusableAgentIdentity(
+      candidate, controller?.did, identityDir, registrarDid,
+      input.reuseAgentIdentity === true,
+    );
   const submission = createRegistrationSubmissionFromIdentity(agent.record, {
     endpoint: candidate.endpoint,
     manifestUrl: candidate.manifestUrl,
@@ -360,6 +351,11 @@ async function createSubmission(
     now,
   });
   preserveControllerDocument(signed, controller ?? agent.record);
+  agent.record.profile.metadata = {
+    ...agent.record.profile.metadata,
+    registrarDid,
+    registrationState: agent.record.profile.metadata?.registrationState ?? "pending",
+  };
   agent.record.didDocument = signed.didDocument;
   const {upsertIdentityRecord} = await import("@openagenet/oan-sdk-ts");
   await saveIdentityStoreSnapshot(upsertIdentityRecord(await loadIdentityStoreSnapshot(identityDir), agent.record), identityDir);
@@ -371,11 +367,13 @@ async function ensureReusableAgentIdentity(
   ownerSubjectDid: string | undefined,
   identityDir: string,
   registrarDid: string,
+  reuseRegistered = false,
 ): Promise<{ record: OanIdentityRecord; identityDir: string }> {
   const snapshot = await loadIdentityStoreSnapshot(identityDir);
   const registrarRoutingCode = registrarRoutingCodeFromDid(registrarDid);
   const existing = snapshot.agents.find(record =>
     record.profile.label === candidate.name && record.profile.resourceType === candidate.resourceType &&
+    (reuseRegistered || ["pending", "failed"].includes(String(record.profile.metadata?.registrationState))) &&
     routingCodeFromDid(record.did) === registrarRoutingCode &&
     (record.didDocument.oanMetadata?.controllerDid ?? record.did) === (ownerSubjectDid ?? record.did));
   if (!existing) {
@@ -487,6 +485,16 @@ function parseSuggestedMetadata(markdown: string): Record<string, string> {
   return output;
 }
 
+function extractVersion(markdown: string): string | undefined {
+  return markdown.match(/(?:^|[\s|])(?:version|版本)\s*[:：]\s*`?([0-9]+(?:\s*\.\s*[0-9]+){1,2}(?:[-+][0-9A-Za-z.-]+)?)`?/i)?.[1];
+}
+
+function normalizeVersion(value: string): string {
+  const cleaned = cleanupText(value);
+  const semver = cleaned.match(/^[0-9]+(?:\s*\.\s*[0-9]+){1,2}(?:[-+][0-9A-Za-z.-]+)?$/);
+  return semver ? cleaned.replace(/\s*\.\s*/g, ".") : cleaned;
+}
+
 function parseSourceAndAccess(markdown: string): Record<string, string> {
   const section = sectionAfter(markdown, "Source And Access");
   const output: Record<string, string> = {};
@@ -511,7 +519,7 @@ function normalizeCandidate(
     name: cleanupText(candidate.name),
     description: cleanupText(candidate.description),
     capabilityDescription: cleanupOptional(candidate.capabilityDescription),
-    version: cleanupText(candidate.version || "1.0.0"),
+    version: normalizeVersion(candidate.version || "1.0.0"),
     endpoint: usefulUrl(candidate.endpoint),
     manifestUrl: usefulUrl(candidate.manifestUrl),
     schemaUrl: usefulUrl(candidate.schemaUrl),
@@ -741,7 +749,7 @@ function registrationDescriptionFromResourceMaterial(
 
   const sentences = unique([
     ...splitSentences(baseDescription).filter((sentence) => !containsRegistrationContext(sentence)),
-    ...resourceFactSentences(candidate),
+    ...resourceFactSentences(candidate, baseDescription),
     ...extractReadableSentences(markdown),
   ]);
   const concise = trimDescriptionToWordLimit(sentences.join(" "), 400);
@@ -756,19 +764,27 @@ function registrationDescriptionFromResourceMaterial(
   return trimDescriptionToWordLimit(unique(expanded).join(" "), 400);
 }
 
-function resourceFactSentences(candidate: ResourceDescriptionRegistrationCandidate): string[] {
+function resourceFactSentences(candidate: ResourceDescriptionRegistrationCandidate, existingDescription = ""): string[] {
   const sentences: string[] = [];
+  const seenUrls = new Set<string>();
+  const existing = existingDescription.toLowerCase();
   sentences.push(`${candidate.name} is a ${readableResourceType(candidate.resourceType)}.`);
-  if (candidate.endpoint) {
+  const addUrlFact = (url: string | undefined, text: string): void => {
+    if (!url || seenUrls.has(url) || existing.includes(url.toLowerCase())) return;
+    seenUrls.add(url);
+    sentences.push(text);
+  };
+  if (candidate.endpoint && !existing.includes(candidate.endpoint.toLowerCase())) {
+    seenUrls.add(candidate.endpoint);
     sentences.push(`The primary public access endpoint is ${candidate.endpoint}.`);
   }
   if (candidate.protocol) {
     sentences.push(`The declared protocol or access model is ${candidate.protocol}.`);
   }
-  if (candidate.packageUrl) sentences.push(`The package or catalog page is ${candidate.packageUrl}.`);
-  if (candidate.repositoryUrl) sentences.push(`The repository link is ${candidate.repositoryUrl}.`);
-  if (candidate.manifestUrl) sentences.push(`The manifest or descriptor URL is ${candidate.manifestUrl}.`);
-  if (candidate.downloadUrl) sentences.push(`The download or access URL is ${candidate.downloadUrl}.`);
+  addUrlFact(candidate.packageUrl, `The package or catalog page is ${candidate.packageUrl}.`);
+  addUrlFact(candidate.repositoryUrl, `The repository link is ${candidate.repositoryUrl}.`);
+  addUrlFact(candidate.manifestUrl, `The manifest or descriptor URL is ${candidate.manifestUrl}.`);
+  addUrlFact(candidate.downloadUrl, `The download or access URL is ${candidate.downloadUrl}.`);
   if (candidate.capabilityTags.length) {
     sentences.push(`Its capability tags are ${candidate.capabilityTags.join(", ")}.`);
   }
@@ -792,7 +808,7 @@ function expansionSentences(candidate: ResourceDescriptionRegistrationCandidate)
   return [
     `${candidate.name} is intended for users who need the capabilities described by its metadata, access model, input fields, output fields, and examples.`,
     access
-      ? `The public access location ${access} is the starting point for evaluating availability, interface behavior, supported platforms, and compatibility with a user's workflow.`
+      ? `The public access location is the starting point for evaluating availability, interface behavior, supported platforms, and compatibility with a user's workflow.`
       : `The available material does not provide an additional public endpoint, so the description stays limited to the named service, access model, and documented behavior.`,
     candidate.inputs.length
       ? `The named input fields describe the information a user or automation is expected to provide before invoking or evaluating the service.`
@@ -858,7 +874,9 @@ function containsRegistrationContext(value: string): boolean {
 
 function splitSentences(value: string): string[] {
   return cleanupText(value)
-    .split(/(?<=[.!?。！？])\s*/)
+    // Western punctuation inside versions, domains and decimal numbers is
+    // not a sentence boundary. CJK punctuation needs no following whitespace.
+    .split(/(?<=[.!?])\s+|(?<=[。！？])\s*/u)
     .map((sentence) => cleanupText(sentence))
     .filter(Boolean);
 }

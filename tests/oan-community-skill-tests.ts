@@ -4,6 +4,7 @@
 // Email: jlxufly@gmail.com
 
 import { OanSkill } from "../src/index.js";
+import { parseResourceDescription } from "../src/resource-description.js";
 import { finalizeRegistrationSubmission } from "../src/registration.js";
 import { createDefaultProfile, DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS } from "../src/profiles.js";
 import { hashDidDocumentWithProof, hashRegistrationPackageBinding } from "@openagenet/oan-sdk-ts";
@@ -15,6 +16,21 @@ import { tmpdir } from "node:os";
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
+
+const versionDescription = parseResourceDescription({
+  text: "Versioned skill 3.22.2 accepts task text and returns a research report. See https://example.org/research for access instructions.",
+  overrides: {
+    name: "Versioned skill", resourceType: "skill", version: "3.22.2",
+    endpoint: "https://example.org/research",
+    manifestUrl: "https://example.org/research",
+    downloadUrl: "https://example.org/research",
+    authorizedDomains: ["technology"],
+  },
+});
+assert(versionDescription.version === "3.22.2", "preserve package semver");
+assert(versionDescription.description.includes("3.22.2"), "preserve semver in prose");
+assert(!versionDescription.description.includes("3. 22. 2"), "never split version punctuation");
+assert((versionDescription.description.match(/https:\/\/example\.org\/research/g) ?? []).length === 1, "deduplicate existing public URL without splitting domain");
 
 function createFetchStub(
   routes: Record<string, { status?: number; body: unknown }>,

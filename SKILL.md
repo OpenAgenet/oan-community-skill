@@ -163,6 +163,35 @@ The implementation retains the controller's exact signed DID document rather
 than rewriting its resource type. A prepared signed submission is transmitted
 unchanged. Missing/expired control proofs require re-signing with local resource
 and controller identities; recomputing hashes alone cannot repair a signature.
+Registration records are persisted as `pending` before the write because the
+resource key is needed to sign the submission. A rejected write marks that
+identity `failed` and records the service error; a later generated registration
+with the same label, resource type, and Registrar reuses it instead of silently
+creating another DID. This is local retry/audit state, not automatic deletion or
+revocation. The identity directory remains the user’s responsibility to back up
+and explicitly clean up when an abandoned identity is no longer wanted.
+
+`identityDir` is a local key and artifact path. It must never be sent as a
+resource endpoint. Registration still requires a real public endpoint,
+manifest/download URL, or repository URL as appropriate; a repository URL does
+not imply an executable endpoint, and a local filesystem path is not public
+resource material.
+
+The DID Document hash includes proof and follows the Root's typed wire
+serialization projection. Legacy `useCases`, `inputs`, and `outputs` fields are
+not part of that Rust structure; use `useCaseExamples`, `inputSchema`, and
+`outputSchema` instead. Do not change hash rules based only on a rejection code.
+The current Registrar exposes no write dry-run compatibility endpoint, so
+preflight can check local protocol structure and node status but cannot promise
+acceptance without submission. Rejection diagnostics include the submitted hash
+and resource/Registrar identifiers when the server does not return an expected
+hash.
+
+Local retry state is stored in `registration-state` sidecar files because the
+SDK identity file does not persist `profile.metadata`. It is not a server-side
+idempotency key or a distributed transaction. After a timeout, query the same
+DID's lifecycle before retrying; never discard its private key automatically.
+
 `draftRegistrationFromResourceDescription()` reads node status and generates
 local signed material, but does not publish. It creates one resource identity;
 `registerFromResourceDescription()` submits that draft without generating a

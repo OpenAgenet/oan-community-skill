@@ -418,6 +418,10 @@ try {
   assert.equal(rejected.identityDir, dir);
   assert.equal(posts.length, count + 1);
   rejectRegistration = false;
+  const retryRejected = await register("skill", "Rejected");
+  assert(retryRejected.ok, retryRejected.errorMessage ?? "retry rejected identity failed");
+  assert.equal(retryRejected.localIdentity?.did, rejected.localIdentity.did,
+    "retry after Registrar rejection must reuse the same DID");
   const discover = await skill.discover({
     query: { query: "contract", limit: 3 },
   });
@@ -487,6 +491,10 @@ try {
   const drafted =
     await skill.draftRegistrationFromResourceDescription(description);
   assert(drafted.ok, drafted.errorMessage ?? "draft failed");
+  const retryDraft = await skill.draftRegistrationFromResourceDescription(description);
+  assert(retryDraft.ok, retryDraft.errorMessage ?? "retry draft failed");
+  assert.equal(retryDraft.data!.submission!.resourceDid, drafted.data!.submission!.resourceDid,
+    "default draft retry must reuse the pending resource DID");
   assert(
     !(
       await skill.draftRegistrationFromResourceDescription({
@@ -518,6 +526,10 @@ try {
   assert.equal(
     (await loadIdentityStoreSnapshot(dir)).agents.length,
     beforeAgents,
+  );
+  assert.equal(
+    (await (await import("../src/registration-state.js")).loadIdentityStoreSnapshot(dir)).agents.find(record => record.did === drafted.data!.submission!.resourceDid)?.profile.metadata?.registrationState,
+    "registered", "accepted signed drafts must mark their stored identity registered",
   );
   assert(
     (
