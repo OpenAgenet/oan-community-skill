@@ -200,6 +200,28 @@ automatic reuse requires matching name, type, Registrar routing and controller.
 
 ## Resource Description Registration
 
+Omit `externalIdentifiers` by default. Populate it only when the user explicitly
+requests external identifiers, or explicitly states that the resource comes
+from an external network platform and the supplied information is sufficient
+to establish its external identifier and resolution address (for example the
+platform name, platform link, or a platform-provided resolution endpoint).
+Providing a specific GitHub repository, npmjs package page, or aggregator
+resource link (including platforms such as SkillHub) as the resource's source counts as identifying its external
+platform origin; no separate request to add external identifiers is needed.
+Derive the native identifier and resolution address from that link and include
+them in `overrides.externalIdentifiers` before drafting/registration. For an
+aggregator, extract the platform and native resource ID or namespaced slug
+from the resource URL; inspect the linked page when its meaning is unclear.
+Use a resolution base with a confirmed lookup rule, or the full resource page,
+so that the identifier and resolution address let others find that resource.
+Respect
+an explicit request to omit external identifiers. Do not invent an ID
+or describe a generic platform homepage as a dedicated resolution API. If the
+user requests external identity but necessary facts are missing, ask for those
+facts while continuing the rest of the draft. See
+[external identifier guidance](references/community-workflows.md#external-identifiers-and-related-oan-identities)
+for standard inputs and the optional `OAN id: ` textual prefix feature.
+
 When a user wants to register a resource from a README, harvested markdown file,
 catalog entry, or free-form resource description, use the resource-description
 workflow before asking them to write a DID document by hand.

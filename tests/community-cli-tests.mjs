@@ -69,6 +69,8 @@ try {
       authorizedDomains: ["technology"],
       inputs: ["待审查文档"],
       outputs: ["审查结果"],
+      externalIdentifiers: [{ id: "did:oan:K7mQ9:7YpQm9Kx2VnRb6Ts3WfHa4Cd5Ej8LgNz" }],
+      implementationLinks: [{ relation: "source", targetDid: "did:oan:K7mQ9:7YpQm9Kx2VnRb6Ts3WfHa4Cd5Ej8LgNz" }],
     },
   });
   await writeFile(
@@ -91,6 +93,10 @@ try {
   assert.equal(submissions.length, 0);
   const draft = JSON.parse(await readFile(join(dir, "draft.json"), "utf8"));
   assert(draft.data.agentIdentity.id);
+  assert.equal(draft.data.submission.didDocument.oanMetadata.externalIdentifiers[0].id,
+    "OAN id: did:oan:K7mQ9:7YpQm9Kx2VnRb6Ts3WfHa4Cd5Ej8LgNz");
+  assert(draft.data.submission.didDocument.oanMetadata.implementationLinks.some(link =>
+    link.targetDid === "did:oan:K7mQ9:7YpQm9Kx2VnRb6Ts3WfHa4Cd5Ej8LgNz"));
   assert.equal(
     draft.data.submission.didDocument.oanMetadata.resourceDescription
       .inputSchema.description,

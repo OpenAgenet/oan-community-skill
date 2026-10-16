@@ -314,3 +314,100 @@ Registration signing uses SDK helpers and the Registrar/Root verify signatures,
 routing, domains and controller admission. `verificationPolicy` remains a legacy
 profile field; it does not enable a full chain/VC verification engine. No Forum
 login, posting, editing or hiding actions are implemented.
+
+### External identifiers and related OAN identities
+
+Default: leave `externalIdentifiers` absent. Add it only in either case:
+
+- The user explicitly requests external identifier information.
+- The user explicitly identifies the resource as originating from an external
+  network platform, and the information they provide lets you establish its
+  external identifier and resolution address. This may include the platform
+  name, a platform resource link, or its designated resolution endpoint.
+
+Use the provided facts to determine the platform's actual native identifier
+and appropriate `resolutionServiceEndpoint`. A platform resource page can be a
+resolution address when it resolves that resource; do not present a generic
+homepage as a dedicated resolver. A specific GitHub repository, npmjs package,
+or aggregator resource link supplied as this resource's source is sufficient
+evidence of external platform origin. Automatically derive and include the
+external identifier and resolution address when determinable; do not require
+an additional explicit request. Respect a user's explicit omission preference.
+For GitHub, use `owner/repository` as the native identifier and
+`https://github.com/` as `resolutionServiceEndpoint`. Remove a terminal `.git`
+and trailing slash from the repository path when extracting the identifier;
+preserve the supplied owner/repository spelling. For example, both
+`https://github.com/OpenAgenet/oan-community-skill` and
+`https://github.com/OpenAgenet/oan-community-skill.git` produce:
+
+```json
+{
+  "externalIdentifiers": [{
+    "id": "OpenAgenet/oan-community-skill",
+    "resolutionServiceEndpoint": "https://github.com/"
+  }]
+}
+```
+
+This is the platform base for interpreting the native repository identifier,
+not a claim that GitHub exposes an OAN resolver API. Keep the full repository
+URL separately as a source/repository link. For npm, use the exact package
+name (including `@scope/` when present), with
+`https://www.npmjs.com/package/` as the preferred resolution base. For example,
+`https://www.npmjs.com/package/@openagenet/oan-community-skill` produces:
+
+```json
+{
+  "externalIdentifiers": [{
+    "id": "@openagenet/oan-community-skill",
+    "resolutionServiceEndpoint": "https://www.npmjs.com/package/"
+  }]
+}
+```
+
+Appending the native identifier to that base reconstructs the package page.
+`https://www.npmjs.com/` also identifies the platform, but prefer the package
+base because it makes the lookup rule explicit. Keep the full package URL as
+the package/catalog link. In general, choose an identifier and resolution
+address that together let others locate the same resource; do not claim an
+unverified API or append platform-specific paths arbitrarily. Aggregator resource
+links, including links from platforms such as SkillHub, follow the same default:
+extract the platform and native resource ID or namespaced resource slug and
+include the external identifier without a separate user request. Preserve any
+owner or other namespace needed to distinguish the resource. Inspect the linked
+page or platform documentation if the URL's identifier or lookup rule is unclear;
+do not treat every last path segment or tracking parameter as a resource ID.
+Use a platform/path base when its lookup rule is confirmed; otherwise the full
+resource page can serve as the resolution address. Check that the resulting
+identifier and address locate the same resource. Do not invent a SkillHub URL
+template or API without verifying the actual supplied link. Keep platform namespaces distinct
+by retaining the resolution address alongside each identifier. Populate
+`overrides.externalIdentifiers` explicitly: the CLI does not fetch arbitrary
+links or infer platform identity on its own. A platform homepage without a
+specific resource identifier is insufficient. Do not invent missing identifiers
+or resolver behavior. If requested facts are incomplete, keep the fields absent
+and request the missing information while preparing the rest of the draft.
+The optional `OAN id: ` feature below follows the same explicit-user-intent
+rule; never add old OAN identities automatically.
+
+Description workflow JSON (`draft`, `register-description`, and batch overrides)
+accepts `overrides.externalIdentifiers` and `overrides.implementationLinks`:
+
+```json
+{
+  "overrides": {
+    "externalIdentifiers": [{ "id": "OAN id: <existing OAN DID>" }],
+    "implementationLinks": [{ "relation": "source", "targetDid": "<existing OAN DID>" }]
+  }
+}
+```
+
+Replace placeholders with actual identifiers. For this workflow, a bare
+`did:oan:...` external identifier is automatically converted to
+`OAN id: did:oan:...`; an already prefixed value remains unchanged. This feature
+preserves the old DID as a textual external identifier. It does not establish
+control, identity equivalence, migration, or automatic DID resolution. Use
+`implementationLinks.targetDid` for a structured relation, choosing a relation
+that accurately describes the resource. The generated registration VC can
+present the prefixed external identifier. Direct signed submissions are never
+rewritten: regenerate and re-sign them through the description workflow.

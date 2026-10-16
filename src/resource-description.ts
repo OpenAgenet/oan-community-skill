@@ -231,7 +231,26 @@ export function parseResourceDescription(
   if (input.overrides !== undefined) {
     objectInput(input.overrides, "overrides");
     for (const [key, value] of Object.entries(input.overrides)) {
-      if (["authorizedDomains", "capabilityTags", "useCases", "inputs", "outputs"].includes(key)) stringsInput(value, `overrides.${key}`);
+      if (["externalIdentifiers", "implementationLinks"].includes(key)) {
+        if (!Array.isArray(value)) throw new Error(`overrides.${key} must be an array`);
+        for (const rawItem of value) {
+          const item = rawItem as unknown as Record<string, unknown>;
+          objectInput(item, `overrides.${key}[]`);
+          if (key === "externalIdentifiers") {
+            stringInput(item.id, "externalIdentifiers.id", true);
+            accessUrlInput(item.resolutionServiceEndpoint, "externalIdentifiers.resolutionServiceEndpoint");
+          } else {
+            stringInput(item.relation, "implementationLinks.relation", true);
+            stringInput(item.targetDid, "implementationLinks.targetDid", true);
+            stringInput(item.versionConstraint, "implementationLinks.versionConstraint");
+            stringInput(item.targetType, "implementationLinks.targetType");
+            if (item.targetType !== undefined && !["controller", "agent_instance", "agent_product", "agent_service", "skill", "mcp_server", "tool_api", "infrastructure_node", "developer", "organization", "root_node", "registrar_node", "discovery_node", "cdn_node", "vc_issuer_node", "trust_indexer_node", "unspecified"].includes(String(item.targetType))) throw new Error("unsupported implementationLinks.targetType");
+            accessUrlInput(item.targetService, "implementationLinks.targetService");
+            if (!/^did:oan:[1-9A-HJ-NP-Za-km-z]{5}:[1-9A-HJ-NP-Za-km-z]{32}$/.test(String(item.targetDid))) throw new Error("implementationLinks.targetDid must be a valid OAN DID");
+          }
+        }
+      }
+      else if (["authorizedDomains", "capabilityTags", "useCases", "inputs", "outputs"].includes(key)) stringsInput(value, `overrides.${key}`);
       else stringInput(value, `overrides.${key}`);
     }
     for (const key of ["endpoint", "manifestUrl", "schemaUrl", "downloadUrl", "repositoryUrl", "packageUrl", "sourceUrl"] as const) accessUrlInput(input.overrides[key], `overrides.${key}`);
@@ -451,12 +470,15 @@ function enrichSubmission(
     version: candidate.version,
   };
   metadata.implementationLinks = [
+    ...(candidate.implementationLinks ?? []),
     link("source", candidate.sourceUrl),
     link("catalog", candidate.packageUrl),
     link("repository", candidate.repositoryUrl),
     link("manifest", candidate.manifestUrl),
     link("download", candidate.downloadUrl),
   ].filter((item): item is ImplementationLink => Boolean(item));
+  if (candidate.externalIdentifiers?.length) metadata.externalIdentifiers = structuredClone(candidate.externalIdentifiers);
+  else delete metadata.externalIdentifiers;
   metadata.protocolBindings = [
     {
       id: `${submission.resourceDid}#binding-primary`,
@@ -517,8 +539,26 @@ function parseSourceAndAccess(markdown: string): Record<string, string> {
 function normalizeCandidate(
   candidate: ResourceDescriptionRegistrationCandidate,
 ): ResourceDescriptionRegistrationCandidate {
+  const externalIdentifiers = candidate.externalIdentifiers?.map(item => ({
+    ...item,
+    id: /^did:oan:/i.test(item.id.trim()) ? `OAN id: ${item.id.trim()}` : item.id.trim(),
+  }));
+  if (externalIdentifiers) {
+    if (externalIdentifiers.length > 8) throw new Error("externalIdentifiers exceeds maxItems 8");
+    const seen = new Set<string>();
+    for (const item of externalIdentifiers) {
+      if (!item.id || Buffer.byteLength(item.id, "utf8") > 512 || /[\u0000-\u001f\u007f-\u009f]/u.test(item.id)) throw new Error("invalid externalIdentifiers.id (max 512 UTF-8 bytes, no control characters)");
+      if (item.resolutionServiceEndpoint && Buffer.byteLength(item.resolutionServiceEndpoint, "utf8") > 1024) throw new Error("externalIdentifiers endpoint exceeds 1024 UTF-8 bytes");
+      const key = JSON.stringify([item.resolutionServiceEndpoint ?? "", item.id]);
+      if (seen.has(key)) throw new Error("duplicate externalIdentifiers after prefix normalization");
+      seen.add(key);
+    }
+    if (Buffer.byteLength(JSON.stringify(externalIdentifiers), "utf8") > 8192) throw new Error("externalIdentifiers exceeds maxBytes 8192");
+  }
   return {
     ...candidate,
+    externalIdentifiers,
+    implementationLinks: candidate.implementationLinks?.map(item => ({ ...item })),
     name: cleanupText(candidate.name),
     description: cleanupText(candidate.description),
     capabilityDescription: cleanupOptional(candidate.capabilityDescription),

@@ -24,6 +24,8 @@ import type {
   ResourceRegistrationResponse,
   ResourceRegistrationSubmission,
   RootAuthorizationInspection,
+  ExternalIdentifier,
+  ImplementationLink,
 } from "@openagenet/oan-sdk-ts/protocol-types";
 import type { OanIdentityRecord } from "@openagenet/oan-sdk-ts";
 
@@ -199,6 +201,8 @@ export type CommunityRegistrableResourceType = Extract<
 >;
 
 export interface ResourceDescriptionRegistrationCandidate {
+  externalIdentifiers?: ExternalIdentifier[];
+  implementationLinks?: ImplementationLink[];
   sourceName?: string;
   sourceUrl?: string;
   resourceType: CommunityRegistrableResourceType;

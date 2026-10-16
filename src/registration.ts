@@ -516,6 +516,9 @@ export function preserveControllerDocument(
   controller: OanIdentityRecord,
 ): void {
   if (submission.controllerAuthorizationProof) {
+    // This proof signs canonical challenge bytes (not JSON-LD proof options).
+    // Rust additionally requires creator even when verificationMethod exists.
+    submission.controllerAuthorizationProof.proof.creator ??= controller.did;
     if (!controller.didDocument.proof)
       throw new Error("registered_controller_signed_document_required");
     submission.controllerAuthorizationProof.controllerDidDocument =

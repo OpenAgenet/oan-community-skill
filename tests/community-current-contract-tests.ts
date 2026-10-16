@@ -25,6 +25,17 @@ import {
 import { documentLoader as securityLoader } from "ed25519-signature-2020-context";
 import { createSkillFetch } from "../src/client-factory.js";
 import { OanHttpError } from "@openagenet/oan-sdk-ts/client";
+function decodeSignature(encoded: string): Buffer {
+  const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  let value = 0n;
+  for (const char of encoded) {
+    assert(alphabet.includes(char));
+    value = value * 58n + BigInt(alphabet.indexOf(char));
+  }
+  let hex = value.toString(16);
+  if (hex.length % 2) hex = "0" + hex;
+  return Buffer.concat([Buffer.alloc(encoded.match(/^1*/)![0].length), Buffer.from(hex, "hex")]);
+}
 async function verifyDocument(document: any): Promise<void> {
   const documentLoader = async (url: string): Promise<any> => {
     if (url === document.id)
@@ -123,8 +134,15 @@ const mock = (async (input: string | URL | Request, init?: RequestInit) => {
     parseDidOanDocument(body.didDocument);
     await verifyDocument(body.didDocument);
     if (body.controllerAuthorizationProof) {
+      assert([body.controllerAuthorizationProof.challenge.controllerDid, body.controllerAuthorizationProof.challenge.verificationMethod].includes(body.controllerAuthorizationProof.proof.creator), "Rust requires controller proof creator");
       const doc = body.controllerAuthorizationProof.controllerDidDocument;
       await verifyDocument(doc);
+      const bundle = body.controllerAuthorizationProof;
+      const method = doc.verificationMethod.find((entry: any) => entry.id === bundle.challenge.verificationMethod);
+      assert(verify(null, Buffer.from(canonicalJson(bundle.challenge), "utf8"),
+        createPublicKey({ key: method.publicKeyJwk, format: "jwk" }),
+        decodeSignature(bundle.proof.proofValue.slice(1))),
+        "adding creator must preserve canonical challenge signature validity");
     }
     assert.equal(
       body.didDocumentHash,
@@ -386,11 +404,15 @@ try {
       identityDir: dir,
       text: `Resource for ${type} workflow automation and documented structured results.`,
       overrides: { name: `Description matrix ${type}`, resourceType: type,
+        externalIdentifiers: [{ id: saved.did }],
+        implementationLinks: [{ relation: "source", targetDid: saved.did, targetType: "controller" }],
         endpoint: "https://example.org/resource", version: "3.22.2", authorizedDomains: ["technology"] },
     });
     assert(described.ok, described.errorMessage ?? `${type} description registration failed`);
     const document = posts.at(-1)!.didDocument;
     assert.equal(document.service![0].version, "3.22.2");
+    assert.equal(document.oanMetadata!.externalIdentifiers![0].id, `OAN id: ${saved.did}`);
+    assert(document.oanMetadata!.implementationLinks!.some(link => link.targetDid === saved.did));
     assert.equal(document.oanMetadata!.resourceDescription!.version, "3.22.2");
   }
   const external = await register(
@@ -399,6 +421,15 @@ try {
     controllerId,
   );
   assert(external.ok, external.errorMessage ?? "external failed");
+  const missingCreator = structuredClone(posts.at(-1)!);
+  delete missingCreator.controllerAuthorizationProof!.proof.creator;
+  assert.equal(skill.validate({ submission: missingCreator }).errorCategory, "controller authorization error");
+  for (const field of ["resourceDid", "controllerDid", "didDocumentHash", "metadataHash", "publisherDid", "purpose", "registrarDid", "nonce", "expiresAt"] as const) {
+    const invalid = structuredClone(posts.at(-1)!);
+    (invalid.controllerAuthorizationProof!.challenge as unknown as Record<string, unknown>)[field] = field === "nonce" ? "" : "invalid";
+    assert.equal(skill.validate({ submission: invalid }).errorCategory, "controller authorization error",
+      `reject broken controller authorization ${field}`);
+  }
   assert.deepEqual(
     posts.at(-1)!.controllerAuthorizationProof!.controllerDidDocument,
     saved.didDocument,
@@ -552,6 +583,19 @@ try {
   const drafted =
     await skill.draftRegistrationFromResourceDescription(description);
   assert(drafted.ok, drafted.errorMessage ?? "draft failed");
+  assert.equal(drafted.data!.submission!.didDocument.oanMetadata!.externalIdentifiers, undefined,
+    "default description draft must omit external identifiers");
+  const withExternal = await skill.draftRegistrationFromResourceDescription({
+    ...description, agentIdentityId: drafted.data!.agentIdentity!.id,
+    overrides: { ...description.overrides, externalIdentifiers: [{ id: saved.did }] },
+  });
+  assert(withExternal.ok, withExternal.errorMessage ?? "external ID draft failed");
+  const withoutExternal = await skill.draftRegistrationFromResourceDescription({
+    ...description, agentIdentityId: drafted.data!.agentIdentity!.id,
+  });
+  assert(withoutExternal.ok, withoutExternal.errorMessage ?? "default reused draft failed");
+  assert.equal(withoutExternal.data!.submission!.didDocument.oanMetadata!.externalIdentifiers, undefined,
+    "reused identity must not silently carry forward a previously supplied external ID");
   const retryDraft = await skill.draftRegistrationFromResourceDescription(description);
   assert(retryDraft.ok, retryDraft.errorMessage ?? "retry draft failed");
   assert.equal(retryDraft.data!.submission!.resourceDid, drafted.data!.submission!.resourceDid,

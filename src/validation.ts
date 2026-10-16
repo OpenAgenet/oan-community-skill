@@ -125,6 +125,39 @@ export function validateRegistrationInput(
     };
   }
   const metadata = submission.didDocument.oanMetadata;
+  const authorization = submission.controllerAuthorizationProof;
+  const controller = metadata?.controllerDid;
+  if (controller && controller !== submission.resourceDid) {
+    const challenge = authorization?.challenge;
+    const proof = authorization?.proof;
+    const method = authorization?.controllerDidDocument?.verificationMethod?.find(
+      item => item.id === challenge?.verificationMethod,
+    );
+    const relationships = [
+      ...(authorization?.controllerDidDocument?.capabilityInvocation ?? []),
+      ...(authorization?.controllerDidDocument?.assertionMethod ?? []),
+    ];
+    if (!challenge || !proof ||
+      !method || method.controller !== controller || !relationships.includes(challenge.verificationMethod) ||
+      challenge.controllerDid !== controller || challenge.resourceDid !== submission.resourceDid ||
+      challenge.didDocumentHash !== submission.didDocumentHash || challenge.metadataHash !== submission.metadataHash ||
+      challenge.publisherDid !== metadata?.publisherDid ||
+      challenge.purpose !== "resource-registration-controller-authorization" ||
+      !challenge.nonce?.trim() ||
+      !Number.isFinite(Date.parse(challenge.issuedAt)) ||
+      !Number.isFinite(Date.parse(challenge.expiresAt)) ||
+      Date.parse(challenge.issuedAt) > Date.parse(challenge.expiresAt) ||
+      Date.parse(challenge.expiresAt) <= Date.now() ||
+      challenge.registrarDid !== submission.subjectControlProof?.challenge.registrarDid ||
+      authorization?.controllerDidDocument?.id !== controller ||
+      ![controller, challenge.verificationMethod].includes(proof.creator ?? "") ||
+      (proof.verificationMethod !== undefined && proof.verificationMethod !== challenge.verificationMethod) ||
+      !["capabilityInvocation", "assertionMethod"].includes(proof.proofPurpose ?? "")) return {
+        ok: false, stage: "failed-validation", errorCategory: "controller authorization error",
+        errorMessage: "controller authorization proof creator, purpose or challenge/document binding mismatch",
+        suggestedNextActions: ["Regenerate controller authorization using the registered controller identity; creator must be controller DID or its verification method ID."],
+      };
+  }
   const defaultVectors: Array<[string, unknown]> = [
     ["verificationMethod", submission.didDocument.verificationMethod],
     ["authentication", submission.didDocument.authentication],

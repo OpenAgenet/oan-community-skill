@@ -33,6 +33,21 @@ const overriddenType = parseResourceDescription({
 });
 assert(overriddenType.resourceType === "mcp_server", "explicit type override wins over parsed type");
 assert(overriddenType.protocol === "mcp", "protocol default follows the overridden resource type");
+const oldDid = "did:oan:K7mQ9:7YpQm9Kx2VnRb6Ts3WfHa4Cd5Ej8LgNz";
+const identifiers = [{ id: oldDid }, { id: `OAN id: ${oldDid}`, resolutionServiceEndpoint: "https://example.org/resolve" }];
+const prefixed = parseResourceDescription({ text: "A research tool.", overrides: { externalIdentifiers: identifiers } });
+assert(identifiers[0].id === oldDid, "prefix normalization must not mutate caller input");
+assert(prefixed.externalIdentifiers?.every(item => item.id === `OAN id: ${oldDid}`), "prefix is added exactly once");
+for (const badIdentifiers of [
+  [{ id: oldDid }, { id: `OAN id: ${oldDid}` }],
+  [{ id: "中".repeat(172) }],
+  Array.from({ length: 9 }, (_, index) => ({ id: `item-${index}` })),
+]) {
+  let rejected = false;
+  try { parseResourceDescription({ text: "Tool", overrides: { externalIdentifiers: badIdentifiers } }); }
+  catch { rejected = true; }
+  assert(rejected, "invalid normalized external identifiers must fail before identity generation");
+}
 assert(versionDescription.version === "3.22.2", "preserve package semver");
 assert(versionDescription.description.includes("3.22.2"), "preserve semver in prose");
 assert(!versionDescription.description.includes("3. 22. 2"), "never split version punctuation");
