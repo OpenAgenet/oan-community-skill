@@ -102,6 +102,10 @@ const mock = (async (input: string | URL | Request, init?: RequestInit) => {
   if (url.endsWith("/registrar/status")) return json({ registrarDid });
   if (url.endsWith("/resources/register")) {
     posts.push(body);
+    for (const field of ["credentialRequirements", "implementationLinks", "protocolBindings", "externalIdentifiers"]) {
+      assert.notDeepEqual(body.didDocument.oanMetadata[field], [],
+        `Rust omits empty ${field}; signing and hashing must use that same wire shape`);
+    }
     parseDidOanDocument(body.didDocument);
     await verifyDocument(body.didDocument);
     if (body.controllerAuthorizationProof) {

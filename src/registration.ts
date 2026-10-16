@@ -589,6 +589,14 @@ function enrichDidDocumentMetadata(
   metadata.credentialRequirements = normalizeCredentialRequirements(
     metadata.credentialRequirements,
   );
+  // Rust OanMetadata omits these empty vectors during serialization. Apply
+  // that projection before signing, not merely while hashing, so the signed
+  // wire document and the Root's typed document have identical content.
+  for (const field of ["implementationLinks", "credentialRequirements", "protocolBindings", "externalIdentifiers"] as const) {
+    if (Array.isArray(metadata[field]) && metadata[field].length === 0) {
+      delete metadata[field];
+    }
+  }
   return {
     ...didDocument,
     oanMetadata: metadata,
