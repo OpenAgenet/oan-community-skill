@@ -320,7 +320,7 @@ try {
     { fetchImpl: mock },
   );
   const register = async (
-    type: "skill" | "controller",
+    type: "skill" | "controller" | "agent_service" | "mcp_server" | "tool_api",
     label: string,
     controllerIdentityId?: string,
   ) =>
@@ -376,6 +376,23 @@ try {
   saved.didDocument = (await loadIdentityStoreSnapshot(dir)).subjects.find(
     (record) => record.id === controllerId,
   )!.didDocument;
+  for (const type of ["agent_service", "skill", "mcp_server", "tool_api"] as const) {
+    for (const owner of [undefined, controllerId]) {
+      const registered = await register(type, `Matrix ${type} ${owner ?? "self"}`, owner);
+      assert(registered.ok, registered.errorMessage ?? `${type} registration failed`);
+      assert.equal(posts.at(-1)!.resourceType, type);
+    }
+    const described = await skill.registerFromResourceDescription({
+      identityDir: dir,
+      text: `Resource for ${type} workflow automation and documented structured results.`,
+      overrides: { name: `Description matrix ${type}`, resourceType: type,
+        endpoint: "https://example.org/resource", version: "3.22.2", authorizedDomains: ["technology"] },
+    });
+    assert(described.ok, described.errorMessage ?? `${type} description registration failed`);
+    const document = posts.at(-1)!.didDocument;
+    assert.equal(document.service![0].version, "3.22.2");
+    assert.equal(document.oanMetadata!.resourceDescription!.version, "3.22.2");
+  }
   const external = await register(
     "skill",
     "External controller resource",
@@ -395,6 +412,20 @@ try {
       })
     ).ok,
   );
+  const managed = (await loadIdentityStoreSnapshot(dir)).agents.find(record => record.did === external.localIdentity!.did)!;
+  const customDraft = structuredClone(posts.find(post => post.resourceDid === managed.did)!);
+  customDraft.didDocument.service![0].version = "interface-v2";
+  customDraft.didDocument.service!.push({
+    id: `${managed.did}#health`, type: "HealthEndpoint", serviceEndpoint: "https://example.org/health", version: "health-v1",
+  });
+  const resigned = await skill.register({
+    submission: customDraft, resourceIdentity: managed,
+    controllerIdentityId: controllerId, identityDir: dir,
+  });
+  assert(resigned.ok, resigned.errorMessage ?? "external controller re-sign failed");
+  assert.equal(posts.at(-1)!.didDocument.service![0].version, "interface-v2", "explicit service versions must survive re-signing");
+  assert.equal(posts.at(-1)!.didDocument.service![1].version, "health-v1", "auxiliary service version must not become package version");
+  assert.deepEqual(posts.at(-1)!.controllerAuthorizationProof!.controllerDidDocument, saved.didDocument);
   const self = await register("skill", "Self");
   assert(self.ok, self.errorMessage ?? "self failed");
   assert.equal(posts.at(-1)!.didDocument.controller, posts.at(-1)!.resourceDid);

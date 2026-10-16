@@ -296,9 +296,14 @@ async function prepareSubmission(
       [...snapshot.agents, ...snapshot.subjects].find(
         (record) => record.did === input.submission!.resourceDid,
       );
+    const controllerId = input.controllerIdentityId ?? input.subjectIdentityId;
+    const controllerIdentity = input.controllerIdentity ?? (controllerId
+      ? [...snapshot.agents, ...snapshot.subjects].find(record => record.id === controllerId)
+      : undefined);
+    if (controllerId && !controllerIdentity) throw new Error("controller_identity_not_found");
     return {
       submission: input.submission,
-      subjectIdentity: input.controllerIdentity ?? input.resourceIdentity,
+      subjectIdentity: controllerIdentity ?? input.resourceIdentity,
       // Re-sign only when the caller explicitly provides local key material.
       // Merely finding a stored identity must not mutate a reviewed draft.
       agentIdentity: input.resourceIdentity,
@@ -331,6 +336,8 @@ async function prepareSubmission(
     )
       throw new Error("resource_identity_type_mismatch");
     const ownerDid = agentIdentity.profile.ownerSubjectDid ?? agentIdentity.did;
+    if (agentIdentity.did.split(":")[2] !== registrarDid.split(":")[3]?.slice(0, 5))
+      throw new Error("resource_identity_registrar_mismatch");
     if (selectedSubject && selectedSubject.did !== ownerDid)
       throw new Error("controller_identity_mismatch");
     if (!selectedSubject && ownerDid !== agentIdentity.did) {
@@ -388,12 +395,20 @@ async function prepareSubmission(
     packageVersion: input.generateIdentity.packageVersion,
     protocol: input.generateIdentity.protocol,
   });
+  setGeneratedResourceVersion(submission);
 
   return {
     submission,
     subjectIdentity: selectedSubject ?? agentIdentity,
     agentIdentity,
   };
+}
+
+/** SDK-generated default services belong to this resource's package version. */
+function setGeneratedResourceVersion(submission: ResourceRegistrationSubmission): void {
+  for (const service of submission.didDocument.service ?? []) service.version = submission.packageVersion;
+  const description = submission.didDocument.oanMetadata?.resourceDescription;
+  if (description) description.version = submission.packageVersion;
 }
 
 async function markIdentityRegistrationState(

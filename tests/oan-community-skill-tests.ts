@@ -27,6 +27,12 @@ const versionDescription = parseResourceDescription({
     authorizedDomains: ["technology"],
   },
 });
+const overriddenType = parseResourceDescription({
+  markdown: "# Server\n\n| resourceType | skill |\n| protocol | skill |\n\nA documented automation resource.",
+  overrides: { resourceType: "mcp_server", endpoint: "https://example.org/mcp" },
+});
+assert(overriddenType.resourceType === "mcp_server", "explicit type override wins over parsed type");
+assert(overriddenType.protocol === "mcp", "protocol default follows the overridden resource type");
 assert(versionDescription.version === "3.22.2", "preserve package semver");
 assert(versionDescription.description.includes("3.22.2"), "preserve semver in prose");
 assert(!versionDescription.description.includes("3. 22. 2"), "never split version punctuation");

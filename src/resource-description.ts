@@ -248,8 +248,10 @@ export function parseResourceDescription(
     extractBlockquoteAfter(body, "Suggested registration description") ??
     fieldValue(fields.description) ??
     firstParagraph(body);
-  const resourceType = normalizeResourceType(fields.resourceType ?? input.overrides?.resourceType);
-  const protocol = cleanupText(fields.protocol ?? input.overrides?.protocol ?? defaultProtocol(resourceType));
+  // Overrides must select the type before its dependent defaults are derived.
+  const resourceType = normalizeResourceType(input.overrides?.resourceType ?? fields.resourceType);
+  const typeChanged = input.overrides?.resourceType !== undefined && fields.resourceType !== undefined && input.overrides.resourceType !== fields.resourceType;
+  const protocol = cleanupText(input.overrides?.protocol ?? (typeChanged ? undefined : fields.protocol) ?? defaultProtocol(resourceType));
   const endpoint =
     usefulUrl(fields.endpoint) ??
     usefulUrl(input.overrides?.endpoint) ??
@@ -436,6 +438,7 @@ function enrichSubmission(
 ): void {
   const metadata = submission.didDocument.oanMetadata;
   if (!metadata) return;
+  for (const service of submission.didDocument.service ?? []) service.version = candidate.version;
   metadata.resourceDescription = {
     ...metadata.resourceDescription,
     name: candidate.name,
