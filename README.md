@@ -296,3 +296,11 @@ services do not fall back to official nodes. Endpoint arrays remain supported
 for deterministic selection, not automatic failover of signed requests.
 
 OAN Forum is outside this package.
+
+Use Node.js 22 or newer. The CLI can read a Markdown file with
+`draft --description resource.md --input metadata.json --output draft.json`, then
+submit that reviewed result with `register --input draft.json --output receipt.json`.
+Use `identities` to locate saved identity IDs without printing keys. Batch results
+preserve per-item receipts; a partial batch returns `ok:false` and exit code 1.
+See [the community workflow guide](references/community-workflows.md) for all CLI
+actions, input types, controller reuse, third-party profiles and recovery steps.

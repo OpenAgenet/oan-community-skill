@@ -7,6 +7,7 @@ import {
   createDefaultProfile,
   selectRegistrarEndpoint,
   selectDiscoveryEndpoint,
+  listLocalIdentities,
 } from "../src/index.js";
 import { loadIdentityStoreSnapshot } from "@openagenet/oan-sdk-ts/identity-store-node";
 import {
@@ -21,6 +22,8 @@ import {
   verifyDidOanDataIntegrity,
 } from "@openagenet/oan-sdk-ts/protocol-types";
 import { documentLoader as securityLoader } from "ed25519-signature-2020-context";
+import { createSkillFetch } from "../src/client-factory.js";
+import { OanHttpError } from "@openagenet/oan-sdk-ts/client";
 async function verifyDocument(document: any): Promise<void> {
   const documentLoader = async (url: string): Promise<any> => {
     if (url === document.id)
@@ -220,6 +223,48 @@ assert.equal(
   selectRegistrarEndpoint(createDefaultProfile()),
   "https://www.openagenet.xyz",
 );
+let requestWrites = 0;
+const retryFetch = createSkillFetch(
+  createDefaultProfile({ retryPolicy: { maxAttempts: 3, delayMs: 0 } }),
+  (async () => {
+    requestWrites++;
+    throw new Error("network failed");
+  }) as typeof fetch,
+);
+await assert.rejects(
+  () =>
+    retryFetch(
+      new Request("https://r.test/resources/register", {
+        method: "POST",
+        body: "{}",
+      }),
+    ),
+  /network failed/,
+);
+assert.equal(
+  requestWrites,
+  1,
+  "Request objects with POST must never be replayed",
+);
+let htmlCalls = 0;
+const htmlFetch = createSkillFetch(
+  createDefaultProfile({ retryPolicy: { maxAttempts: 3, delayMs: 0 } }),
+  (async () => {
+    htmlCalls++;
+    return new Response("<html>route not found</html>", {
+      status: 404,
+      headers: { "content-type": "text/html" },
+    });
+  }) as typeof fetch,
+);
+await assert.rejects(
+  () => htmlFetch("https://r.test/missing"),
+  (error) =>
+    error instanceof OanHttpError &&
+    error.status === 404 &&
+    JSON.stringify(error.body).includes("route not found"),
+);
+assert.equal(htmlCalls, 1);
 assert.equal(
   selectDiscoveryEndpoint(createDefaultProfile()),
   "https://www.openagenet.xyz",
@@ -291,7 +336,10 @@ try {
       packageVersion: "1.0.1",
     },
   });
-  assert(controllerUpdate.ok, controllerUpdate.errorMessage ?? "controller update failed");
+  assert(
+    controllerUpdate.ok,
+    controllerUpdate.errorMessage ?? "controller update failed",
+  );
   assert.equal(controllerUpdate.data!.agentIdentity!.did, saved.did);
   assert.equal((await loadIdentityStoreSnapshot(dir)).subjects.length, 1);
   // Use the latest signed document after the controller version update.
@@ -335,7 +383,7 @@ try {
     "skill",
   );
   const signed = structuredClone(posts.at(-1)!);
-  const replay = await skill.register({ submission: signed });
+  const replay = await skill.register({ submission: signed, identityDir: dir });
   assert(replay.ok, replay.errorMessage ?? "signed failed");
   assert.deepEqual(posts.at(-1), signed);
   const tampered = structuredClone(signed);
@@ -366,6 +414,8 @@ try {
   rejectRegistration = true;
   const rejected = await register("skill", "Rejected");
   assert(!rejected.ok);
+  assert(rejected.localIdentity?.did);
+  assert.equal(rejected.identityDir, dir);
   assert.equal(posts.length, count + 1);
   rejectRegistration = false;
   const discover = await skill.discover({
@@ -375,6 +425,39 @@ try {
   assert.equal(discover.stage, undefined);
   assert.equal(discover.data!.explanation, undefined);
   assert(!(await skill.discover({ query: { limit: 0 } })).ok);
+  const invalidStart = requests.length;
+  for (const query of [
+    { query: 42 },
+    { capabilityTags: "software" },
+    { searchMode: "semantic" },
+    { versionMode: "exact" },
+    { limit: "5" },
+    { resourceType: "wrong" },
+  ]) {
+    assert(!(await skill.discover({ query: query as any })).ok);
+  }
+  assert.equal(
+    requests.length,
+    invalidStart,
+    "invalid JSON must fail before network access",
+  );
+  assert(
+    !(await skill.listResources({ source: "registrar", afterDid: 42 } as any))
+      .ok,
+  );
+  assert(
+    !(
+      await skill.draftRegistrationFromResourceDescription({
+        overrides: { authorizedDomains: "technology" },
+      } as any)
+    ).ok,
+  );
+  assert.throws(() =>
+    createDefaultProfile({ customRegistrarEndpoints: "https://r.test" } as any),
+  );
+  assert.throws(() =>
+    createDefaultProfile({ allowDirectRootInspection: "false" } as any),
+  );
   assert(
     (await skill.queryResource({ resourceDid: saved.did, source: "registrar" }))
       .ok,
@@ -404,9 +487,34 @@ try {
   const drafted =
     await skill.draftRegistrationFromResourceDescription(description);
   assert(drafted.ok, drafted.errorMessage ?? "draft failed");
+  assert(
+    !(
+      await skill.draftRegistrationFromResourceDescription({
+        ...description,
+        overrides: {
+          ...description.overrides,
+          authorizedDomains: ["*", "technology"],
+        },
+      })
+    ).ok,
+  );
+  assert(drafted.data!.agentIdentity?.id);
+  assert.equal(drafted.data!.identityDir, dir);
+  assert.equal(
+    drafted.data!.submission!.didDocument.oanMetadata!.packageInfo!.packageHash,
+    undefined,
+    "do not invent an artifact hash from a description",
+  );
   const stored = await loadIdentityStoreSnapshot(dir);
   const beforeAgents = stored.agents.length;
-  assert((await skill.register({ submission: drafted.data!.submission! })).ok);
+  assert(
+    (
+      await skill.register({
+        submission: drafted.data!.submission!,
+        identityDir: dir,
+      })
+    ).ok,
+  );
   assert.equal(
     (await loadIdentityStoreSnapshot(dir)).agents.length,
     beforeAgents,
@@ -428,6 +536,31 @@ try {
   });
   assert.equal(batch.data!.results.length, 2);
   assert.equal(batch.data!.summary.registered, 1);
+  assert(!batch.ok);
+  assert(batch.data!.results[1].registration);
+  assert(batch.data!.results[1].agentIdentity?.id);
+  const controlledDescription = await skill.registerFromResourceDescription({
+    ...description,
+    controllerIdentityId: controllerId,
+  });
+  assert(
+    controlledDescription.ok,
+    controlledDescription.errorMessage ?? "description controller failed",
+  );
+  assert.equal(posts.at(-1)!.didDocument.oanMetadata!.controllerDid, saved.did);
+  const updateControlled = await skill.registerFromResourceDescription({
+    ...description,
+    agentIdentityId: controlledDescription.data!.agentIdentity!.id,
+  });
+  assert(
+    updateControlled.ok,
+    updateControlled.errorMessage ?? "controller reuse failed",
+  );
+  const listed = await listLocalIdentities({ identityDir: dir });
+  assert(listed.ok);
+  assert(listed.data!.items.some((item) => item.id === controllerId));
+  assert(!JSON.stringify(listed).includes("privateKey"));
+  assert(!(await missing.lifecycle({ resourceDid: saved.did })).ok);
   assert(!requests.some((r) => /\/root\/|\/cdn\//.test(r.url)));
   console.log("current protocol contracts passed");
 } finally {

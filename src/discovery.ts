@@ -5,6 +5,12 @@
 
 import { OanHttpError } from "@openagenet/oan-sdk-ts/client";
 import { createOanClient } from "./client-factory.js";
+import {
+  objectInput,
+  stringInput,
+  stringsInput,
+  booleanInput,
+} from "./input.js";
 import type {
   DiscoverySkillInput,
   DiscoverySkillOutput,
@@ -18,6 +24,57 @@ export async function discoverResourcesWithSkill(
   options: { fetchImpl?: typeof fetch } = {},
 ): Promise<SkillActionResult<DiscoverySkillOutput>> {
   try {
+    objectInput(input, "input");
+    objectInput(input.query, "query");
+    booleanInput(input.includeExplanation, "includeExplanation");
+    for (const key of Object.keys(input.query)) {
+      if (
+        ![
+          "query",
+          "resourceType",
+          "capabilityTags",
+          "protocol",
+          "version",
+          "versionMode",
+          "limit",
+        ].includes(key)
+      )
+        throw new Error(`unsupported query field: ${key}`);
+    }
+    for (const key of [
+      "query",
+      "resourceType",
+      "protocol",
+      "version",
+      "versionMode",
+    ] as const)
+      stringInput(input.query[key], `query.${key}`);
+    stringsInput(input.query.capabilityTags, "query.capabilityTags");
+    if (
+      input.query.resourceType &&
+      ![
+        "agent_service",
+        "skill",
+        "mcp_server",
+        "tool_api",
+        "controller",
+      ].includes(input.query.resourceType)
+    )
+      throw new Error("unsupported query.resourceType");
+    if (
+      input.query.versionMode &&
+      !["latest", "exact", "constraint", "any-retained"].includes(
+        input.query.versionMode,
+      )
+    )
+      throw new Error("unsupported query.versionMode");
+    if (
+      ["exact", "constraint"].includes(input.query.versionMode ?? "") &&
+      !input.query.version?.trim()
+    )
+      throw new Error(
+        "query.version is required for exact/constraint versionMode",
+      );
     const client = createOanClient(profile, options);
     // Authorization domains are not capability tags or protocol query filters.
     const normalizedQuery = { ...input.query, limit: input.query.limit ?? 10 };
@@ -34,6 +91,10 @@ export async function discoverResourcesWithSkill(
         ? undefined
         : client.explainDiscoveryQuery(normalizedQuery).catch(() => undefined),
     ]);
+    if (!Array.isArray(response.candidates))
+      throw new Error(
+        "invalid_discovery_response: candidates must be an array",
+      );
     return {
       ok: true,
       data: { response, explanation },

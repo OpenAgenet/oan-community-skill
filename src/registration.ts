@@ -32,19 +32,68 @@ import {
 } from "@openagenet/oan-sdk-ts/identity-store-node";
 import { createHash } from "node:crypto";
 import { resolveRegistrarDid } from "./registrar.js";
+import { saveRegistrationFiles } from "./registration-files.js";
+import {
+  objectInput,
+  stringInput,
+  stringsInput,
+  accessUrlInput,
+} from "./input.js";
 
 export async function registerResourceWithSkill(
   profile: OanSkillProfile,
   input: RegistrationSkillInput,
   options: { fetchImpl?: typeof fetch } = {},
 ): Promise<SkillActionResult<RegistrationSkillOutput>> {
+  let localIdentity: { id: string; did: string } | undefined;
   try {
+    objectInput(input, "input");
+    for (const key of [
+      "identityDir",
+      "controllerIdentityId",
+      "subjectIdentityId",
+      "agentIdentityId",
+      "registrarDid",
+    ] as const)
+      stringInput(input[key], key);
+    if (input.generateIdentity) {
+      objectInput(input.generateIdentity, "generateIdentity");
+      const generate = input.generateIdentity;
+      stringInput(
+        generate.resourceLabel,
+        "generateIdentity.resourceLabel",
+        true,
+      );
+      if (
+        ![
+          "controller",
+          "agent_service",
+          "skill",
+          "mcp_server",
+          "tool_api",
+        ].includes(generate.resourceType)
+      )
+        throw new Error("unsupported generateIdentity.resourceType");
+      for (const key of ["description", "protocol", "packageVersion"] as const)
+        stringInput(generate[key], `generateIdentity.${key}`);
+      for (const key of ["authorizedDomains", "capabilityTags"] as const)
+        stringsInput(generate[key], `generateIdentity.${key}`);
+      for (const key of ["endpoint", "manifestUrl", "schemaUrl"] as const)
+        accessUrlInput(generate[key], `generateIdentity.${key}`);
+      if (!generate.authorizedDomains?.length)
+        throw new Error("resource_domains_required");
+    }
     const registrarDid = await resolveRegistrarDid(
       profile,
       input.registrarDid,
       options,
     );
     const prepared = await prepareSubmission(input, registrarDid);
+    if (prepared.agentIdentity)
+      localIdentity = {
+        id: prepared.agentIdentity.id,
+        did: prepared.agentIdentity.did,
+      };
     const normalizedSubmission =
       await finalizeRegistrationSubmissionWithControllerProof(
         prepared,
@@ -57,6 +106,8 @@ export async function registerResourceWithSkill(
       return {
         ok: false,
         stage: validation.stage,
+        localIdentity,
+        identityDir: input.identityDir ?? getDefaultIdentityStoreDir(),
         errorCategory: validation.errorCategory,
         errorMessage: validation.errorMessage,
         missingInputs: validation.missingInputs,
@@ -83,6 +134,17 @@ export async function registerResourceWithSkill(
         );
       }
       const registration = await client.registerResource(normalizedSubmission);
+      let files: RegistrationSkillOutput["files"];
+      let fileSaveError: string | undefined;
+      try {
+        files = await saveRegistrationFiles(
+          input.identityDir ?? getDefaultIdentityStoreDir(),
+          normalizedSubmission,
+          registration,
+        );
+      } catch (error) {
+        fileSaveError = error instanceof Error ? error.message : String(error);
+      }
       const observed = await client.observeLifecycle(
         normalizedSubmission.resourceDid,
       );
@@ -104,20 +166,35 @@ export async function registerResourceWithSkill(
       return {
         ok: true,
         stage: lifecycle.stage,
+        localIdentity,
+        identityDir: input.identityDir ?? getDefaultIdentityStoreDir(),
         data: {
+          files,
+          fileSaveError,
           registration,
           lifecycle,
           subjectIdentity: summarizeIdentity(prepared.subjectIdentity),
           agentIdentity: summarizeIdentity(prepared.agentIdentity),
         },
         verificationFindings: validation.verificationFindings,
-        suggestedNextActions: suggestedLifecycleNextActions(lifecycle.stage),
+        suggestedNextActions: [
+          ...suggestedLifecycleNextActions(lifecycle.stage),
+          ...(fileSaveError
+            ? [
+                "Registration succeeded but saving local files failed. Save data.registration immediately and resolve fileSaveError; do not register a second identity.",
+              ]
+            : [
+                "Report the exact saved file paths and explain DID Document, registration VC and OAN Identity uses. Keep VC/receipts and private-key identity files in a secure location.",
+              ]),
+        ],
       };
     } catch (error) {
       if (error instanceof OanHttpError) {
         return {
           ok: false,
           stage: "failed-submission",
+          localIdentity,
+          identityDir: input.identityDir ?? getDefaultIdentityStoreDir(),
           errorCategory: "registration rejection",
           errorMessage: JSON.stringify(error.body),
           verificationFindings: validation.verificationFindings,
@@ -129,6 +206,8 @@ export async function registerResourceWithSkill(
       return {
         ok: false,
         stage: "failed-submission",
+        localIdentity,
+        identityDir: input.identityDir ?? getDefaultIdentityStoreDir(),
         errorCategory: "endpoint error",
         errorMessage: error instanceof Error ? error.message : String(error),
         verificationFindings: validation.verificationFindings,
@@ -141,6 +220,10 @@ export async function registerResourceWithSkill(
     return {
       ok: false,
       stage: "failed-validation",
+      localIdentity,
+      identityDir: localIdentity
+        ? (input.identityDir ?? getDefaultIdentityStoreDir())
+        : undefined,
       errorCategory: "registration preparation error",
       errorMessage: error instanceof Error ? error.message : String(error),
       suggestedNextActions: [
@@ -172,7 +255,7 @@ async function prepareSubmission(
   const identityDir = input.identityDir ?? getDefaultIdentityStoreDir();
   const snapshot = await loadIdentityStoreSnapshot(identityDir);
   const controllerId = input.controllerIdentityId ?? input.subjectIdentityId;
-  const selectedSubject = controllerId
+  let selectedSubject = controllerId
     ? [...snapshot.subjects, ...snapshot.agents].find(
         (record) => record.id === controllerId,
       )
@@ -190,6 +273,16 @@ async function prepareSubmission(
       agentIdentity.profile.resourceType !== input.generateIdentity.resourceType
     )
       throw new Error("resource_identity_type_mismatch");
+    const ownerDid = agentIdentity.profile.ownerSubjectDid ?? agentIdentity.did;
+    if (selectedSubject && selectedSubject.did !== ownerDid)
+      throw new Error("controller_identity_mismatch");
+    if (!selectedSubject && ownerDid !== agentIdentity.did) {
+      selectedSubject = [...snapshot.subjects, ...snapshot.agents].find(
+        (record) => record.did === ownerDid,
+      );
+      if (!selectedSubject)
+        throw new Error("registered_controller_identity_required_for_reuse");
+    }
   } else {
     const record = await createOanIdentityRecord({
       kind:
@@ -264,7 +357,8 @@ async function finalizeRegistrationSubmissionWithControllerProof(
         !authorization ||
         authorization.challenge.registrarDid !== registrarDid ||
         authorization.challenge.controllerDid !== controller ||
-        authorization.challenge.resourceDid !== prepared.submission.resourceDid ||
+        authorization.challenge.resourceDid !==
+          prepared.submission.resourceDid ||
         !Number.isFinite(Date.parse(authorization.challenge.expiresAt)) ||
         Date.parse(authorization.challenge.expiresAt) <= Date.now() ||
         authorization.challenge.didDocumentHash !==
@@ -373,13 +467,17 @@ function enrichDidDocumentMetadata(
   const metadata = {
     ...asRecord(didDocument.oanMetadata),
   };
-  const packageInfo = {
+  const packageInfo: Record<string, unknown> = {
     ...asRecord(metadata.packageInfo),
     version: submission.packageVersion,
   };
   // PackageInfo is deny_unknown_fields in the wire protocol. Hash algorithm
   // belongs to the submission, not the DID document's packageInfo.
   delete (packageInfo as Record<string, unknown>).hashAlgorithm;
+  for (const field of ["packageHash", "metadataHash"] as const) {
+    if (/^sha256:0{64}$/.test(String(packageInfo[field])))
+      delete packageInfo[field];
+  }
   metadata.packageInfo = packageInfo;
   metadata.implementationLinks = normalizeImplementationLinks(
     metadata.implementationLinks,

@@ -14,6 +14,7 @@ export * from "./operator-assist.js";
 export * from "./capability-assist.js";
 export * from "./resource-description.js";
 export * from "./query.js";
+export * from "./identities.js";
 
 import { createDefaultProfile } from "./profiles.js";
 import { discoverResourcesWithSkill } from "./discovery.js";

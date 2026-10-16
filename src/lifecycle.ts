@@ -21,6 +21,10 @@ export async function inspectLifecycleWithSkill(
     assertDidOan(input.resourceDid);
     const client = createOanClient(profile, options);
     const snapshot = await client.observeLifecycle(input.resourceDid);
+    if (!snapshot.registrarStatus && !snapshot.discoveryStatus && !snapshot.registrarAccepted && !snapshot.rootObserved && !snapshot.cdnObserved && !snapshot.discoveryVisible) {
+      throw new Error("No selected OAN service returned an observation; check node configuration and reachability.");
+    }
+    snapshot.observations = [...(snapshot.observations ?? []), "Observation is best effort: an unavailable service or missing record does not prove failed registration."];
     return {
       ok: true,
       stage: snapshot.stage,

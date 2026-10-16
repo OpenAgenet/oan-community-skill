@@ -118,6 +118,15 @@ From this package, run `npm ci`, then `npm run build`. The reusable entry point 
 `node scripts/oan-community.mjs --help` (installed npm command: `oan-community`).
 All input/output files use UTF-8. Keep identity directories and credential
 receipts outside Git; the CLI's `--output` saves structured results locally.
+Use Node.js 22 or newer. Use `identities` to find saved identity IDs without
+printing keys. `draft --description resource.md --input metadata.json --output
+draft.json` reads a local description; `register --input draft.json --output
+receipt.json` submits that exact reviewed draft. Both commands need the same
+third-party profile when used. Batch CLI inputs may use `sourcePath`; per-item
+results retain registration receipts and return failure for incomplete batches.
+Use `capability-tags`, `suggest-registration`, and `suggest-query` for optional
+public metadata assistance. Keep suggestions editable and do not treat them as
+Registrar authorization.
 
 Resolve the actual Registrar DID through the selected node's
 `GET /registrar/status` before generating routing codes or signing. An explicit
@@ -134,6 +143,21 @@ sample DID or derive identity from a hostname.
   be registered as required by the selected Registrar. The resource still has
   its own signing key. Controller authorization concerns registration/document
   updates; it does not replace the resource's identity.
+
+Choose the registration scenario from the user's stated purpose. Default to
+self-control when registering a resource; do not create an extra controller just
+because the resource has a human author or belongs to a company. If the user
+states that the identity represents a natural person or a legal person AND will
+be used later to register/manage that person's or entity's agent resources,
+choose dedicated-controller registration with `generateIdentity.resourceType:
+"controller"`. Tell the user that this is the selected scenario and why, then
+use the normal `register` workflow (not the four-product description workflow).
+For example: “根据你的用途，本次将注册 controller 身份，代表该自然人或法人；后续可用它授权注册所管理的智能体资源，并管理相关 DID 文档更新。各智能体仍保有自己的身份和签名私钥。”
+Use the user's actual name/label and description; the controller role alone does
+not establish verified real-world identity or legal-person certification.
+If the user already has a registered controller and wants to register a managed
+resource, choose the external-controller scenario and reuse that identity.
+Preserve an explicit user choice among all three scenarios.
 
 The implementation retains the controller's exact signed DID document rather
 than rewriting its resource type. A prepared signed submission is transmitted
@@ -328,6 +352,39 @@ If lower-level SDK details are needed, read:
 - `../oan-sdk-ts/packages/protocol-types/src/index.ts`
 
 ## Output Expectations
+
+After every successful registration (including each successful batch item),
+tell the user the exact absolute directory and file paths from `data.files`.
+Explain each file and when to use it:
+
+- DID Document (`did-document.json`): the signed public document containing the
+  DID, verification methods/public keys, controller and resource metadata/services;
+  used for identity resolution, signature verification and resource discovery.
+- Registration VC (`registration-vc.json`): issued by the Registrar, proving the
+  registration claims and scope; used when presenting registration credentials or
+  checking identity/authorization with a relying service. It contains no signing
+  private key, but can contain sensitive claims. Possession alone is not a substitute
+  for signing or for the relying service's authorization checks.
+- OAN Identity (`identity.json`): the locally generated identity containing its
+  private key and DID document; used for local signing, resource updates, controller
+  authorization of managed resources, and authorized credential queries as
+  applicable. A resource's identity signs for that resource; a controller's identity
+  authorizes its managed resources. Private keys are not uploaded.
+
+Tell the user to keep these files in a secure location, especially the VC and
+OAN Identity, with a secure backup and restricted access. Do not publish them in
+Git, a public folder or chat. The DID document may be shared for verification;
+review its metadata for privacy before sharing. Preserve the registration receipt
+too, as it contains the issued VC. Mention that local identity JSON is not encrypted
+by this helper and Windows permissions depend on filesystem ACLs.
+
+Report only files actually saved: `registrationVc` is absent if the service did
+not return a VC, and `oanIdentity` is absent if a pre-signed submission has no
+matching local identity. For the latter, explain that the private identity remains
+with its original creator; never claim a new key was generated. If `fileSaveError`
+is present, registration succeeded but file saving failed: preserve the returned
+registration response immediately and repair local saving without registering a
+new identity. Never print private-key content to explain a file.
 
 Return structured results that help another agent continue the workflow:
 

@@ -18,6 +18,54 @@ export const DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS = {
 export function createDefaultProfile(
   overrides: Partial<OanSkillProfile> = {},
 ): OanSkillProfile {
+  if (!overrides || typeof overrides !== "object" || Array.isArray(overrides))
+    throw new Error("profile must be an object");
+  if (
+    overrides.nodeSelectionMode !== undefined &&
+    ![
+      "official-only",
+      "official-preferred",
+      "custom-only",
+      "custom-preferred",
+    ].includes(overrides.nodeSelectionMode)
+  )
+    throw new Error("invalid_node_selection_mode");
+  for (const key of [
+    "officialRegistrarEndpoints",
+    "officialDiscoveryEndpoints",
+    "customRegistrarEndpoints",
+    "customDiscoveryEndpoints",
+  ] as const) {
+    if (
+      overrides[key] !== undefined &&
+      (!Array.isArray(overrides[key]) ||
+        overrides[key]!.some((value) => typeof value !== "string"))
+    )
+      throw new Error(`${key} must be an array of URLs`);
+    overrides[key]?.forEach(validateEndpoint);
+  }
+  for (const key of [
+    "baseUrl",
+    "registrarEndpoint",
+    "discoveryEndpoint",
+    "rootReferenceEndpoint",
+    "cdnReferenceEndpoint",
+    "trustIndexerEndpoint",
+  ] as const) {
+    if (overrides[key] !== undefined) {
+      if (typeof overrides[key] !== "string")
+        throw new Error(`${key} must be a URL string`);
+      validateEndpoint(overrides[key]!);
+    }
+  }
+  for (const key of [
+    "allowDirectRootInspection",
+    "allowDirectCdnInspection",
+    "allowGovernanceStateReads",
+  ] as const) {
+    if (overrides[key] !== undefined && typeof overrides[key] !== "boolean")
+      throw new Error(`${key} must be a boolean`);
+  }
   if (
     overrides.requestTimeoutMs !== undefined &&
     (!Number.isSafeInteger(overrides.requestTimeoutMs) ||

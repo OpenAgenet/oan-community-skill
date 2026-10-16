@@ -2,8 +2,9 @@
   "name": "@openagenet/oan-community-skill",
   "version": "1.1.0",
   "type": "module",
+  "engines": { "node": ">=22" },
   "license": "Apache-2.0",
-  "description": "Community-facing OAN skill package for registration, discovery, lifecycle, and governance workflows.",
+  "description": "Community OAN registration, discovery, resource queries and local identity workflows.",
   "publishConfig": {
     "access": "public"
   },
@@ -34,7 +35,7 @@
     "prepack": "npm run build",
     "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit",
     "check:public": "npm run build && node scripts/check-public-services.mjs",
-    "test": "node ./node_modules/tsx/dist/cli.mjs tests/oan-community-skill-tests.ts && node ./node_modules/tsx/dist/cli.mjs tests/community-current-contract-tests.ts"
+    "test": "node ./node_modules/tsx/dist/cli.mjs tests/oan-community-skill-tests.ts && node ./node_modules/tsx/dist/cli.mjs tests/community-current-contract-tests.ts && npm run build && node tests/community-cli-tests.mjs"
   },
   "dependencies": {
     "@openagenet/oan-sdk-ts": "1.1.0"

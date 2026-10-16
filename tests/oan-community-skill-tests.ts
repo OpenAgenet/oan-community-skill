@@ -685,10 +685,10 @@ try {
     /^did:oan:[1-9A-HJ-NP-Za-km-z]{5}:[1-9A-HJ-NP-Za-km-z]{32}$/.test(String(draft.data?.submission?.resourceDid)),
     "skill draft should use did-oan did:oan syntax",
   );
-  const draftInputs = draft.data?.submission?.didDocument.oanMetadata?.resourceDescription?.inputs;
+  const draftInputs = draft.data?.submission?.didDocument.oanMetadata?.resourceDescription?.inputSchema;
   assert(
-    Array.isArray(draftInputs) && draftInputs[0] === "Source file path",
-    "draft should preserve structured inputs",
+    typeof draftInputs === "object" && draftInputs !== null && String((draftInputs as Record<string, unknown>).description).includes("Source file path"),
+    "draft should preserve input descriptions in the protocol-supported inputSchema",
   );
   assert(
     draft.data?.submission?.didDocument.oanMetadata?.implementationLinks?.some(
@@ -981,7 +981,7 @@ const invalidChineseDomainDraft = await descriptionSkill.draftRegistrationFromRe
     capabilityTags: ["legal.contract.review"],
   },
 });
-assert(invalidChineseDomainDraft.ok, "draft generation can expose invalid domains to final validation");
+assert(!invalidChineseDomainDraft.ok, "draft must reject invalid authorization domains before publication");
 const invalidChineseDomainRegistration = await descriptionSkill.registerFromResourceDescription({
   text: chineseDescription,
   overrides: {
@@ -1053,7 +1053,7 @@ try {
       },
     ],
   });
-  assert(batch.ok, "batch registration should continue after skipped items");
+  assert(!batch.ok, "a partial batch must report incomplete success while retaining processed results");
   assert(batch.data?.summary.total === 3, "batch total mismatch");
   assert(batch.data?.summary.registered === 1, "batch registered count mismatch");
   assert(batch.data?.summary.skipped === 2, "batch skipped count mismatch");

@@ -71,6 +71,8 @@ export interface SkillActionResult<T = unknown> {
   suggestedNextActions?: string[];
   errorCategory?: string;
   errorMessage?: string;
+  localIdentity?: { id: string; did: string };
+  identityDir?: string;
 }
 
 export interface RegistrationSkillInput {
@@ -101,10 +103,20 @@ export interface RegistrationSkillInput {
 }
 
 export interface RegistrationSkillOutput {
+  files?: RegistrationFiles;
+  fileSaveError?: string;
   registration: ResourceRegistrationResponse;
   lifecycle: Omit<OanLifecycleSnapshot, "cdnPackage">;
   subjectIdentity?: Pick<OanIdentityRecord, "id" | "did" | "profile">;
   agentIdentity?: Pick<OanIdentityRecord, "id" | "did" | "profile">;
+}
+
+export interface RegistrationFiles {
+  directory: string;
+  didDocument: string;
+  receipt: string;
+  registrationVc?: string;
+  oanIdentity?: string;
 }
 
 export interface DiscoverySkillInput {
@@ -216,6 +228,7 @@ export interface ResourceDescriptionRegistrationInput {
   identityDir?: string;
   subjectLabel?: string;
   subjectIdentityId?: string;
+  controllerIdentityId?: string;
   agentIdentityId?: string;
   registrarDid?: string;
   reuseAgentIdentity?: boolean;
@@ -227,11 +240,15 @@ export interface ResourceDescriptionRegistrationInput {
 export interface ResourceDescriptionDraftOutput {
   candidate: ResourceDescriptionRegistrationCandidate;
   submission?: ResourceRegistrationSubmission;
+  agentIdentity?: RegistrationSkillOutput["agentIdentity"];
+  identityDir?: string;
   missingInputs?: string[];
   qualityIssues?: string[];
 }
 
 export interface ResourceDescriptionRegistrationOutput {
+  files?: RegistrationFiles;
+  fileSaveError?: string;
   candidate: ResourceDescriptionRegistrationCandidate;
   registration?: RegistrationSkillOutput["registration"];
   lifecycle?: RegistrationSkillOutput["lifecycle"];
@@ -242,6 +259,8 @@ export interface ResourceDescriptionRegistrationOutput {
 }
 
 export interface ResourceDescriptionBatchItem {
+  /** File read failure supplied by CLI collectors; never submitted. */
+  sourceReadError?: string;
   id?: string;
   sourcePath?: string;
   markdown?: string;
@@ -255,15 +274,21 @@ export interface ResourceDescriptionBatchRegistrationInput {
   items: ResourceDescriptionBatchItem[];
   identityDir?: string;
   subjectLabel?: string;
+  controllerIdentityId?: string;
+  registrarDid?: string;
   stopOnFailure?: boolean;
 }
 
 export interface ResourceDescriptionBatchItemResult {
+  files?: RegistrationFiles;
+  fileSaveError?: string;
   id: string;
   sourcePath?: string;
   status: "registered" | "skipped" | "failed";
   stage?: OanWorkflowStage;
   resourceDid?: string;
+  registration?: ResourceRegistrationResponse;
+  agentIdentity?: RegistrationSkillOutput["agentIdentity"];
   candidate?: ResourceDescriptionRegistrationCandidate;
   missingInputs?: string[];
   qualityIssues?: string[];

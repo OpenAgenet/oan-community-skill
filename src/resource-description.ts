@@ -3,7 +3,8 @@
 // Initial author: JINLIANG XU
 // Email: jlxufly@gmail.com
 
-import { createHash } from "node:crypto";
+import { resolve } from "node:path";
+import { objectInput, stringInput, stringsInput, booleanInput, accessUrlInput } from "./input.js";
 import {
   createAgentIdentityNode,
   loadIdentityStoreSnapshot,
@@ -24,6 +25,7 @@ import type {
 import { registerResourceWithSkill } from "./registration.js";
 import { finalizeRegistrationSubmission, preserveControllerDocument } from "./registration.js";
 import { resolveRegistrarDid } from "./registrar.js";
+import { validateRegistrationInput } from "./validation.js";
 import type {
   CommunityRegistrableResourceType,
   OanSkillProfile,
@@ -55,6 +57,12 @@ export async function draftRegistrationFromResourceDescriptionWithSkill(
       const registrarDid = profile ? await resolveRegistrarDid(profile, input.registrarDid, options) : input.registrarDid;
       if (!registrarDid) throw new Error("registrar_did_required_for_offline_draft");
       output.submission = await createSubmission(candidate, input, registrarDid);
+      output.identityDir = resolve(input.identityDir ?? getDefaultIdentityStoreDir());
+      const snapshot = await loadIdentityStoreSnapshot(output.identityDir);
+      const identity = snapshot.agents.find(record => record.did === output.submission!.resourceDid);
+      if (identity) output.agentIdentity = {id: identity.id, did: identity.did, profile: identity.profile};
+      const validation = validateRegistrationInput({submission: output.submission});
+      if (!validation.ok) return {...validation, data:output, localIdentity:output.agentIdentity, identityDir:output.identityDir};
     }
 
     return {
@@ -89,11 +97,14 @@ export async function registerFromResourceDescriptionWithSkill(
     return {
       ok: false,
       stage: draft.stage,
+      localIdentity: draft.localIdentity,
+      identityDir: draft.identityDir,
       data: draft.data
         ? {
             candidate: draft.data.candidate,
             missingInputs: draft.data.missingInputs,
             qualityIssues: draft.data.qualityIssues,
+            agentIdentity: draft.data.agentIdentity,
           }
         : undefined,
       errorCategory: draft.errorCategory ?? "input error",
@@ -108,7 +119,9 @@ export async function registerFromResourceDescriptionWithSkill(
   }
 
   const submission = draft.data.submission;
-  const registration = await registerResourceWithSkill(profile, { submission, registrarDid: input.registrarDid }, options);
+  const registration = await registerResourceWithSkill(profile, { submission, identityDir:input.identityDir, registrarDid: input.registrarDid }, options);
+  registration.identityDir = draft.data.identityDir;
+  registration.localIdentity = draft.data.agentIdentity;
   const snapshot = await loadIdentityStoreSnapshot(input.identityDir);
   const resource = snapshot.agents.find(record => record.did === submission.resourceDid);
   const owner = [...snapshot.subjects,...snapshot.agents].find(record => record.did === submission.didDocument.oanMetadata?.controllerDid);
@@ -117,6 +130,8 @@ export async function registerFromResourceDescriptionWithSkill(
     data: {
       candidate: draft.data.candidate,
       registration: registration.data?.registration,
+      files: registration.data?.files,
+      fileSaveError: registration.data?.fileSaveError,
       lifecycle: registration.data?.lifecycle,
       subjectIdentity: owner ? {id:owner.id,did:owner.did,profile:owner.profile} : registration.data?.subjectIdentity,
       agentIdentity: resource ? {id:resource.id,did:resource.did,profile:resource.profile} : registration.data?.agentIdentity,
@@ -136,14 +151,19 @@ export async function registerBatchFromResourceDescriptionsWithSkill(
   input: ResourceDescriptionBatchRegistrationInput,
   options: { fetchImpl?: typeof fetch } = {},
 ): Promise<SkillActionResult<ResourceDescriptionBatchRegistrationOutput>> {
+  if (!input || !Array.isArray(input.items) || !input.items.length) return {ok:false, errorCategory:"input error", errorMessage:"items must be a non-empty array"};
   const results: ResourceDescriptionBatchRegistrationOutput["results"] = [];
 
   for (const [index, item] of input.items.entries()) {
-    const id = item.id ?? item.sourcePath ?? `item-${index + 1}`;
+    const id = item?.id ?? item?.sourcePath ?? `item-${index + 1}`;
     let result: SkillActionResult<ResourceDescriptionRegistrationOutput>;
-    try { result = await registerFromResourceDescriptionWithSkill(
+    try {
+      if (item?.sourceReadError) throw new Error(`source file read failed: ${item.sourceReadError}`);
+      result = await registerFromResourceDescriptionWithSkill(
       profile,
       {
+        controllerIdentityId: input.controllerIdentityId,
+        registrarDid: input.registrarDid,
         markdown: item.markdown,
         text: item.text,
         identityDir: input.identityDir,
@@ -160,10 +180,14 @@ export async function registerBatchFromResourceDescriptionsWithSkill(
     const missingInputs = result.missingInputs ?? result.data?.missingInputs;
     results.push({
       id,
-      sourcePath: item.sourcePath,
+      sourcePath: item?.sourcePath,
       status: result.ok ? "registered" : missingInputs?.length ? "skipped" : "failed",
       stage: result.stage,
       resourceDid: result.data?.registration?.resourceDid,
+      registration: result.data?.registration,
+      files: result.data?.files,
+      fileSaveError: result.data?.fileSaveError,
+      agentIdentity: result.data?.agentIdentity,
       candidate: result.data?.candidate,
       missingInputs,
       qualityIssues: result.data?.qualityIssues,
@@ -183,7 +207,7 @@ export async function registerBatchFromResourceDescriptionsWithSkill(
   };
 
   return {
-    ok: summary.registered > 0 && summary.failed === 0,
+    ok: summary.registered === input.items.length,
     stage: summary.skipped || summary.failed ? "failed-validation" : "accepted-by-registrar",
     data: { summary, results },
     verificationFindings: [
@@ -200,6 +224,17 @@ export async function registerBatchFromResourceDescriptionsWithSkill(
 export function parseResourceDescription(
   input: ResourceDescriptionRegistrationInput,
 ): ResourceDescriptionRegistrationCandidate {
+  objectInput(input, "input");
+  for (const key of ["markdown", "text", "identityDir", "subjectIdentityId", "controllerIdentityId", "agentIdentityId", "registrarDid"] as const) stringInput(input[key], key);
+  booleanInput(input.reuseAgentIdentity, "reuseAgentIdentity");
+  if (input.overrides !== undefined) {
+    objectInput(input.overrides, "overrides");
+    for (const [key, value] of Object.entries(input.overrides)) {
+      if (["authorizedDomains", "capabilityTags", "useCases", "inputs", "outputs"].includes(key)) stringsInput(value, `overrides.${key}`);
+      else stringInput(value, `overrides.${key}`);
+    }
+    for (const key of ["endpoint", "manifestUrl", "schemaUrl", "downloadUrl", "repositoryUrl", "packageUrl", "sourceUrl"] as const) accessUrlInput(input.overrides[key], `overrides.${key}`);
+  }
   const body = input.markdown ?? input.text ?? "";
   if (!body.trim() && !input.overrides) {
     throw new Error("resource_description_required");
@@ -269,12 +304,20 @@ async function createSubmission(
 ): Promise<ResourceRegistrationSubmission> {
   const identityDir = input.identityDir ?? getDefaultIdentityStoreDir();
   const snapshot = await loadIdentityStoreSnapshot(identityDir);
-  const controller = input.subjectIdentityId
-    ? [...snapshot.subjects, ...snapshot.agents].find(record => record.id === input.subjectIdentityId)
+  const controllerId = input.controllerIdentityId ?? input.subjectIdentityId;
+  let controller = controllerId
+    ? [...snapshot.subjects, ...snapshot.agents].find(record => record.id === controllerId)
     : undefined;
-  if (input.subjectIdentityId && !controller) throw new Error("controller_identity_not_found");
+  if (controllerId && !controller) throw new Error("controller_identity_not_found");
   const selectedAgent = input.agentIdentityId ? snapshot.agents.find(record => record.id === input.agentIdentityId) : undefined;
   if (input.agentIdentityId && !selectedAgent) throw new Error("agent_identity_not_found");
+  if (selectedAgent && !controller) {
+    const ownerDid = selectedAgent.profile.ownerSubjectDid ?? selectedAgent.did;
+    if (ownerDid !== selectedAgent.did) {
+      controller = [...snapshot.subjects, ...snapshot.agents].find(record => record.did === ownerDid);
+      if (!controller) throw new Error("registered_controller_identity_required_for_reuse");
+    }
+  }
   if (selectedAgent && controller && selectedAgent.didDocument.oanMetadata?.controllerDid !== controller.did) {
     throw new Error("controller_identity_mismatch");
   }
@@ -402,15 +445,12 @@ function enrichSubmission(
     capabilityDescription: candidate.capabilityDescription,
     capabilityTags: candidate.capabilityTags,
     useCaseExamples: candidate.useCases,
-    inputs: candidate.inputs,
-    outputs: candidate.outputs,
-    sourceDataset: candidate.sourceName,
-    sourceUrl: candidate.sourceUrl,
-    upstreamMaintainer: candidate.maintainer,
-    license: candidate.license,
+    inputSchema: candidate.inputs.length ? { description: candidate.inputs.join("; ") } : undefined,
+    outputSchema: candidate.outputs.length ? { description: candidate.outputs.join("; ") } : undefined,
     version: candidate.version,
   };
   metadata.implementationLinks = [
+    link("source", candidate.sourceUrl),
     link("catalog", candidate.packageUrl),
     link("repository", candidate.repositoryUrl),
     link("manifest", candidate.manifestUrl),
@@ -432,16 +472,6 @@ function enrichSubmission(
     downloadUrl: candidate.downloadUrl,
     version: candidate.version,
     versionScheme: isSemver(candidate.version) ? "semver" : "upstream",
-    packageHash: `sha256:${hashJson({
-      sourceName: candidate.sourceName,
-      sourceUrl: candidate.sourceUrl,
-      name: candidate.name,
-      resourceType: candidate.resourceType,
-      version: candidate.version,
-      endpoint: candidate.endpoint,
-      manifestUrl: candidate.manifestUrl,
-      downloadUrl: candidate.downloadUrl,
-    })}`,
   };
 }
 
@@ -538,6 +568,7 @@ function normalizeResourceType(value?: string): CommunityRegistrableResourceType
   ) {
     return normalized;
   }
+  if (normalized) throw new Error(`unsupported resourceType: ${normalized}`);
   return "agent_service";
 }
 
@@ -684,7 +715,6 @@ function unique<T>(values: T[]): T[] {
 
 function sortUnique(values: string[]): string[] {
   const uniqueValues = unique(values.map(cleanupText).filter(Boolean));
-  if (uniqueValues.includes("*")) return ["*"];
   return uniqueValues.sort();
 }
 
@@ -874,17 +904,4 @@ function trimCjkDescriptionToLimit(value: string, limit: number): string {
     output += char;
   }
   return output.trim().replace(/[，,；;\s]+$/, "") + (output.trim().endsWith("。") ? "" : "。");
-}
-
-function hashJson(value: unknown): string {
-  return createHash("sha256").update(canonicalJson(value)).digest("hex");
-}
-
-function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, entryValue]) => entryValue !== undefined)
-    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
-  return `{${entries.map(([key, entryValue]) => `${JSON.stringify(key)}:${canonicalJson(entryValue)}`).join(",")}}`;
 }

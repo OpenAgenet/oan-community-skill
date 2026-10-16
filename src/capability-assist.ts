@@ -4,6 +4,7 @@
 // Email: jlxufly@gmail.com
 
 import { createOanClient } from "./client-factory.js";
+import { objectInput, stringInput, stringsInput } from "./input.js";
 import type {
   CapabilityAssistInput,
   CapabilityAssistOutput,
@@ -21,6 +22,10 @@ export async function suggestCapabilityTagsWithSkill(
   options: { fetchImpl?: typeof fetch } = {},
 ): Promise<SkillActionResult<CapabilityAssistOutput>> {
   try {
+    objectInput(input, "input");
+    stringInput(input.description, "description");
+    stringInput(input.query, "query");
+    stringsInput(input.tags, "tags");
     const client = createOanClient(profile, options);
     const [suggestions, normalized] = await Promise.all([
       client.suggestCapabilityTags({
@@ -52,6 +57,12 @@ export async function suggestRegistrationMetadataWithSkill(
   options: { fetchImpl?: typeof fetch } = {},
 ): Promise<SkillActionResult<RegistrationMetadataAssistOutput>> {
   try {
+    objectInput(input, "input");
+    stringInput(input.name, "name", true);
+    stringInput(input.description, "description", true);
+    for (const field of ["endpoint", "manifestText", "schemaText", "locale", "resourceType"] as const) {
+      if (input[field] !== null) stringInput(input[field], field);
+    }
     const client = createOanClient(profile, options);
     const [suggestions, domainCatalog] = await Promise.all([
       client.suggestRegistrationMetadata(input),
@@ -83,6 +94,12 @@ export async function suggestDiscoveryQueryWithSkill(
   options: { fetchImpl?: typeof fetch } = {},
 ): Promise<SkillActionResult<DiscoveryQueryAssistOutput>> {
   try {
+    objectInput(input, "input");
+    stringInput(input.query, "query", true);
+    stringsInput(input.currentCapabilityTags, "currentCapabilityTags");
+    for (const field of ["currentProtocol", "currentResourceType", "locale"] as const) {
+      if (input[field] !== null) stringInput(input[field], field);
+    }
     const client = createOanClient(profile, options);
     const suggestions = await client.suggestDiscoveryQuery(input);
     return {
