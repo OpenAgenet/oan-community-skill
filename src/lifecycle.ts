@@ -4,6 +4,7 @@
 // Email: jlxufly@gmail.com
 
 import { createOanClient } from "./client-factory.js";
+import { assertDidOan } from "@openagenet/oan-sdk-ts";
 import type {
   LifecycleSkillInput,
   LifecycleSkillOutput,
@@ -17,6 +18,7 @@ export async function inspectLifecycleWithSkill(
   options: { fetchImpl?: typeof fetch } = {},
 ): Promise<SkillActionResult<LifecycleSkillOutput>> {
   try {
+    assertDidOan(input.resourceDid);
     const client = createOanClient(profile, options);
     const snapshot = await client.observeLifecycle(input.resourceDid);
     return {

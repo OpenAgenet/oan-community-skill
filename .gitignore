@@ -2,3 +2,5 @@ node_modules/
 dist/
 coverage/
 *.log
+.oan-community-identities/
+.oan-dids/

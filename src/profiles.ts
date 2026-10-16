@@ -15,10 +15,31 @@ export const DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS = {
   trustIndexerEndpoint: DEFAULT_OAN_OFFICIAL_ENDPOINTS.trustIndexerEndpoint,
 };
 
-export function createDefaultProfile(overrides: Partial<OanSkillProfile> = {}): OanSkillProfile {
+export function createDefaultProfile(
+  overrides: Partial<OanSkillProfile> = {},
+): OanSkillProfile {
+  if (
+    overrides.requestTimeoutMs !== undefined &&
+    (!Number.isSafeInteger(overrides.requestTimeoutMs) ||
+      overrides.requestTimeoutMs < 1)
+  ) {
+    throw new Error("invalid_request_timeout");
+  }
+  if (
+    overrides.retryPolicy &&
+    (!Number.isSafeInteger(overrides.retryPolicy.maxAttempts) ||
+      overrides.retryPolicy.maxAttempts < 1 ||
+      !Number.isSafeInteger(overrides.retryPolicy.delayMs) ||
+      overrides.retryPolicy.delayMs < 0)
+  ) {
+    throw new Error("invalid_retry_policy");
+  }
+  const customOnly = overrides.nodeSelectionMode === "custom-only";
   return {
     nodeSelectionMode: "official-preferred",
-    baseUrl: DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS.baseUrl,
+    baseUrl: customOnly
+      ? undefined
+      : DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS.baseUrl,
     officialRegistrarEndpoints: [],
     officialDiscoveryEndpoints: [],
     customRegistrarEndpoints: [],
@@ -28,41 +49,71 @@ export function createDefaultProfile(overrides: Partial<OanSkillProfile> = {}): 
     requestTimeoutMs: 15_000,
     retryPolicy: { maxAttempts: 2, delayMs: 500 },
     verificationPolicy: "balanced",
-    allowDirectRootInspection: true,
-    allowDirectCdnInspection: true,
+    allowDirectRootInspection: !customOnly || !!overrides.rootReferenceEndpoint,
+    allowDirectCdnInspection: !customOnly || !!overrides.cdnReferenceEndpoint,
     allowGovernanceStateReads: false,
     ...overrides,
   };
 }
 
-export function selectRegistrarEndpoint(profile: OanSkillProfile): string | undefined {
+export function selectRegistrarEndpoint(
+  profile: OanSkillProfile,
+): string | undefined {
+  if (profile.registrarEndpoint)
+    return validateEndpoint(profile.registrarEndpoint);
   const list = orderedEndpoints(
     profile.nodeSelectionMode,
-    profile.officialRegistrarEndpoints ?? [],
+    profile.officialRegistrarEndpoints?.length
+      ? profile.officialRegistrarEndpoints
+      : [DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS.baseUrl],
     profile.customRegistrarEndpoints ?? [],
   );
-  const value = list[0];
-  if (!value && profile.nodeSelectionMode === "custom-only" && !profile.baseUrl) {
-    throw new Error("missing_registrar_endpoint");
-  }
-  return value;
+  const value =
+    profile.baseUrl &&
+    !profile.customRegistrarEndpoints?.length &&
+    !profile.officialRegistrarEndpoints?.length
+      ? profile.baseUrl
+      : list[0];
+  return value ? validateEndpoint(value) : undefined;
 }
 
 export function selectBaseUrl(profile: OanSkillProfile): string | undefined {
-  return profile.baseUrl;
+  return profile.baseUrl ? validateEndpoint(profile.baseUrl) : undefined;
 }
 
-export function selectDiscoveryEndpoint(profile: OanSkillProfile): string | undefined {
+export function selectDiscoveryEndpoint(
+  profile: OanSkillProfile,
+): string | undefined {
+  if (profile.discoveryEndpoint)
+    return validateEndpoint(profile.discoveryEndpoint);
   const list = orderedEndpoints(
     profile.nodeSelectionMode,
-    profile.officialDiscoveryEndpoints ?? [],
+    profile.officialDiscoveryEndpoints?.length
+      ? profile.officialDiscoveryEndpoints
+      : [DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS.baseUrl],
     profile.customDiscoveryEndpoints ?? [],
   );
-  const value = list[0];
-  if (!value && profile.nodeSelectionMode === "custom-only" && !profile.baseUrl) {
-    throw new Error("missing_discovery_endpoint");
+  const value =
+    profile.baseUrl &&
+    !profile.customDiscoveryEndpoints?.length &&
+    !profile.officialDiscoveryEndpoints?.length
+      ? profile.baseUrl
+      : list[0];
+  return value ? validateEndpoint(value) : undefined;
+}
+
+export function validateEndpoint(endpoint: string): string {
+  const url = new URL(endpoint);
+  if (
+    !["http:", "https:"].includes(url.protocol) ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash
+  ) {
+    throw new Error("invalid_oan_endpoint");
   }
-  return value;
+  return endpoint.trim().replace(/\/+$/, "");
 }
 
 function orderedEndpoints(
@@ -72,6 +123,7 @@ function orderedEndpoints(
 ): string[] {
   if (mode === "official-only") return official.filter(Boolean);
   if (mode === "custom-only") return custom.filter(Boolean);
-  if (mode === "custom-preferred") return [...custom, ...official].filter(Boolean);
+  if (mode === "custom-preferred")
+    return [...custom, ...official].filter(Boolean);
   return [...official, ...custom].filter(Boolean);
 }

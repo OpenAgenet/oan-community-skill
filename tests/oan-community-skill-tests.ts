@@ -4,6 +4,7 @@
 // Email: jlxufly@gmail.com
 
 import { OanSkill } from "../src/index.js";
+import { finalizeRegistrationSubmission } from "../src/registration.js";
 import { createDefaultProfile, DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS } from "../src/profiles.js";
 import { hashDidDocumentWithProof, hashRegistrationPackageBinding } from "@openagenet/oan-sdk-ts";
 import type { ResourceRegistrationSubmission } from "@openagenet/oan-sdk-ts/protocol-types";
@@ -95,7 +96,7 @@ const fetchStub = createFetchStub({
     body: { status: "submitted", resourceDid, resourceType: "skill" },
   },
   "GET https://registrar.example/registrar/status": {
-    body: { status: "ok", rootAuthorizationStatus: "authorized" },
+    body: { status: "ok", rootAuthorizationStatus: "authorized", registrarDid:"did:oan:P9aBc:2LmNo3PqRsTuVwXyZaBcDeFgHiJkLmNo" },
   },
   "GET https://registrar.example/registrar/root-authorization": {
     body: {
@@ -251,7 +252,7 @@ const descriptionFetchStub = (async (input: string | URL, init?: RequestInit) =>
   const url = String(input);
   const method = (init?.method ?? "GET").toUpperCase();
   if (method === "GET" && url === "https://registrar.example/registrar/status") {
-    return jsonResponse({ status: "ok", rootAuthorizationStatus: "authorized" });
+    return jsonResponse({ status: "ok", rootAuthorizationStatus: "authorized", registrarDid:"did:oan:P9aBc:2LmNo3PqRsTuVwXyZaBcDeFgHiJkLmNo" });
   }
   if (method === "GET" && url === "https://root.example/root/status") {
     return jsonResponse({ status: "ok", latestVersionCount: 1, cdnReadyQueueCount: 0 });
@@ -416,23 +417,13 @@ assert(
 const invalidRoutingCode = structuredClone(submission);
 invalidRoutingCode.resourceDid = "did:oan:A7bC:7YpQm9Kx2VnRb6Ts3WfHa4Cd5Ej8LgNz";
 invalidRoutingCode.didDocument.id = invalidRoutingCode.resourceDid;
-let invalidRoutingRejected = false;
-try {
-  skill.validate({ submission: invalidRoutingCode });
-} catch {
-  invalidRoutingRejected = true;
-}
+const invalidRoutingRejected = !skill.validate({ submission: invalidRoutingCode }).ok;
 assert(invalidRoutingRejected, "invalid routing-code should fail validation");
 
 const legacySemanticDid = structuredClone(submission);
 legacySemanticDid.resourceDid = "did:oan:SKLG:7YpQm9Kx2VnRb6Ts3WfHa4Cd5Ej8LgNz";
 legacySemanticDid.didDocument.id = legacySemanticDid.resourceDid;
-let legacySemanticRejected = false;
-try {
-  skill.validate({ submission: legacySemanticDid });
-} catch {
-  legacySemanticRejected = true;
-}
+const legacySemanticRejected = !skill.validate({ submission: legacySemanticDid }).ok;
 assert(legacySemanticRejected, "legacy semantic-code DID should fail validation");
 
 const missingDomainValidation = skill.validate({
@@ -480,13 +471,10 @@ assert(
 );
 
 const registration = await skill.register({ submission });
-assert(registration.ok, "registration should pass");
-assert(registration.stage === "visible-in-discovery", "registration stage mismatch");
+assert(!registration.ok, "unsigned manual registration must not be sent");
 const registrationRequest = capturedRequests.find((request) => request.key === "POST https://registrar.example/resources/register");
-assert(registrationRequest?.body, "registration should submit a request body");
-const submitted = registrationRequest.body as ResourceRegistrationSubmission & {
-  didDocumentHash?: string;
-};
+assert(!registrationRequest, "missing control proof must prevent POST");
+const submitted = await finalizeRegistrationSubmission(structuredClone(submission));
 assert(/^sha256:[0-9a-f]{64}$/.test(String(submitted.didDocumentHash)), "registration should compute didDocumentHash");
 assert(/^sha256:[0-9a-f]{64}$/.test(String(submitted.metadataHash)), "registration should compute metadataHash");
 assert(/^sha256:[0-9a-f]{64}$/.test(String(submitted.packageHash)), "registration should compute packageHash");
@@ -548,27 +536,12 @@ try {
     };
   };
   assert(generatedSubmitted.didDocument.proof, "generated registration should attach top-level DID Document proof");
-  assert(
-    generatedSubmitted.controllerAuthorizationProof?.challenge?.controllerDid ===
-      generatedRegistration.data?.subjectIdentity?.did,
-    "generated registration should attach controllerAuthorizationProof",
-  );
-  assert(
-    generatedSubmitted.controllerAuthorizationProof?.challenge?.resourceDid ===
-      generatedRegistration.data?.agentIdentity?.did,
-    "controllerAuthorizationProof should bind generated resource DID",
-  );
-  assert(
-    generatedSubmitted.controllerAuthorizationProof?.challenge?.registrarDid === "did:oan:P9aBc:2LmNo3PqRsTuVwXyZaBcDeFgHiJkLmNo",
-    "controllerAuthorizationProof should bind the configured Registrar DID",
-  );
+  assert(generatedSubmitted.didDocument.controller === generatedSubmitted.resourceDid, "default registration is self-controlled");
+  assert(!generatedSubmitted.controllerAuthorizationProof, "self-control requires no external controller proof");
+  assert(generatedSubmitted.subjectControlProof?.challenge.registrarDid === "did:oan:P9aBc:2LmNo3PqRsTuVwXyZaBcDeFgHiJkLmNo", "subject proof binds selected Registrar");
   assert(
     generatedSubmitted.packageHash === `sha256:${await hashRegistrationPackageBinding(generatedSubmitted)}`,
     "generated registration packageHash should bind final didDocumentHash",
-  );
-  assert(
-    !("cryptoSuite" in (generatedSubmitted.controllerAuthorizationProof?.controllerDidDocument?.verificationMethod?.[0] ?? {})),
-    "controllerAuthorizationProof must not expose legacy controller DID document crypto suite",
   );
   assert(
     !JSON.stringify(generatedSubmitted).includes("privateKeyJwk"),

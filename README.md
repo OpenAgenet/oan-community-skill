@@ -45,7 +45,7 @@ Typical flow:
    needed
 3. fill the missing fields reported by the skill
 4. call `registerFromResourceDescription()` or `register()`
-5. use `discover()` or `checkLifecycle()` after registration to confirm the
+5. use `discover()` or `lifecycle()` after registration to confirm the
    result
 
 If the material is already structured, skip the draft step and submit the
@@ -82,7 +82,7 @@ if (draft.ok) {
       name: "OAN Community Skill",
       endpoint: "https://www.openagenet.xyz/",
       protocol: "skill",
-      authorizedDomains: ["openagenet.xyz"],
+      authorizedDomains: ["technology.software_engineering"],
       capabilityTags: ["oan.community.skill", "registration", "discovery"],
       useCases: ["Register OAN resources", "Discover OAN resources"],
       inputs: ["Resource description"],
@@ -171,7 +171,7 @@ await skill.registerFromResourceDescription({
     name: "OAN Community Skill",
     endpoint: "https://www.openagenet.xyz/",
     protocol: "skill",
-    authorizedDomains: ["openagenet.xyz"],
+    authorizedDomains: ["technology.software_engineering"],
     capabilityTags: ["oan.community.skill", "registration", "discovery"],
     useCases: ["Register OAN resources", "Discover OAN resources"],
     inputs: ["Resource description"],
@@ -242,8 +242,8 @@ Default community posture:
   the user configures third-party endpoints
 - do not treat recognized test nodes listed on the Network page, or any
   loopback/internal operator endpoint, as ordinary community defaults
-- keep official endpoint defaults centralized through the SDK-derived default
-  profile so future official IP/domain migration is a one-place update
+- keep the live community gateway default centralized in the default profile;
+  SDK subdomain constants remain reference values
 - keep private keys local
 - treat assisted suggestions as editable user help: `authorizedDomains` must
   stay valid for the selected Registrar, while `capabilityTags` can be edited,
@@ -264,3 +264,35 @@ indexer by default.
 
 The TypeScript implementation builds on `oan-sdk-ts` and should not duplicate
 low-level protocol types, HTTP transport, or verification primitives.
+
+## Current service workflows
+
+See [community-workflows.md](references/community-workflows.md) for executable
+CLI examples, all three registration scenarios, third-party service configuration,
+paginated queries and controller-authorized VC retrieval.
+
+```powershell
+npm ci
+npm run build
+node scripts/oan-community.mjs --help
+node scripts/oan-community.mjs domains --output domains.json
+```
+
+The default resource is self-controlled; an external controller must already be
+registered. The Registrar DID is read from the selected service, never a sample.
+Prepared signed submissions are sent unchanged. Description registration creates
+one identity per resource; explicit identity IDs support retries/version updates.
+Keys remain local. The CLI writes registration receipts with `--output`.
+
+Additional methods: `queryResource()`, `listResources()`, `registrationDomains()`,
+`registrationCredentialStatus()`, `registrationCredential()`. Query/list source is
+`registrar` or `discovery`; list operations fetch one bounded page. Private VC
+retrieval requires the Registrar's stored controller-access binding and is not
+available for every historical or self-controlled registration.
+
+Use `nodeSelectionMode: "custom-only"` with `registrarEndpoint` and
+`discoveryEndpoint` (or a third-party `baseUrl`) for third-party services. Missing
+services do not fall back to official nodes. Endpoint arrays remain supported
+for deterministic selection, not automatic failover of signed requests.
+
+OAN Forum is outside this package.

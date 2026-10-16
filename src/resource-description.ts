@@ -6,9 +6,9 @@
 import { createHash } from "node:crypto";
 import {
   createAgentIdentityNode,
-  ensureSubjectIdentityNode,
   loadIdentityStoreSnapshot,
   saveIdentityStoreSnapshot,
+  getDefaultIdentityStoreDir,
 } from "@openagenet/oan-sdk-ts/identity-store-node";
 import {
   createRegistrationSubmissionFromIdentity,
@@ -22,7 +22,8 @@ import type {
   ResourceType,
 } from "@openagenet/oan-sdk-ts/protocol-types";
 import { registerResourceWithSkill } from "./registration.js";
-import { DEFAULT_COMMUNITY_REGISTRAR_DID } from "./registration.js";
+import { finalizeRegistrationSubmission, preserveControllerDocument } from "./registration.js";
+import { resolveRegistrarDid } from "./registrar.js";
 import type {
   CommunityRegistrableResourceType,
   OanSkillProfile,
@@ -37,6 +38,8 @@ import type {
 
 export async function draftRegistrationFromResourceDescriptionWithSkill(
   input: ResourceDescriptionRegistrationInput,
+  profile?: OanSkillProfile,
+  options: { fetchImpl?: typeof fetch } = {},
 ): Promise<SkillActionResult<ResourceDescriptionDraftOutput>> {
   try {
     const candidate = parseResourceDescription(input);
@@ -49,7 +52,9 @@ export async function draftRegistrationFromResourceDescriptionWithSkill(
     };
 
     if (missingInputs.length === 0) {
-      output.submission = await createSubmission(candidate, input, DEFAULT_COMMUNITY_REGISTRAR_DID);
+      const registrarDid = profile ? await resolveRegistrarDid(profile, input.registrarDid, options) : input.registrarDid;
+      if (!registrarDid) throw new Error("registrar_did_required_for_offline_draft");
+      output.submission = await createSubmission(candidate, input, registrarDid);
     }
 
     return {
@@ -79,8 +84,7 @@ export async function registerFromResourceDescriptionWithSkill(
   input: ResourceDescriptionRegistrationInput,
   options: { fetchImpl?: typeof fetch } = {},
 ): Promise<SkillActionResult<ResourceDescriptionRegistrationOutput>> {
-  const registrarDid = profile.registrarDid ?? DEFAULT_COMMUNITY_REGISTRAR_DID;
-  const draft = await draftRegistrationFromResourceDescriptionWithSkill(input);
+  const draft = await draftRegistrationFromResourceDescriptionWithSkill(input, profile, options);
   if (!draft.ok || !draft.data?.submission) {
     return {
       ok: false,
@@ -103,16 +107,19 @@ export async function registerFromResourceDescriptionWithSkill(
     };
   }
 
-  const submission = await createSubmission(draft.data.candidate, input, registrarDid);
-  const registration = await registerResourceWithSkill(profile, { submission, registrarDid }, options);
+  const submission = draft.data.submission;
+  const registration = await registerResourceWithSkill(profile, { submission, registrarDid: input.registrarDid }, options);
+  const snapshot = await loadIdentityStoreSnapshot(input.identityDir);
+  const resource = snapshot.agents.find(record => record.did === submission.resourceDid);
+  const owner = [...snapshot.subjects,...snapshot.agents].find(record => record.did === submission.didDocument.oanMetadata?.controllerDid);
   return {
     ...registration,
     data: {
       candidate: draft.data.candidate,
       registration: registration.data?.registration,
       lifecycle: registration.data?.lifecycle,
-      subjectIdentity: registration.data?.subjectIdentity,
-      agentIdentity: registration.data?.agentIdentity,
+      subjectIdentity: owner ? {id:owner.id,did:owner.did,profile:owner.profile} : registration.data?.subjectIdentity,
+      agentIdentity: resource ? {id:resource.id,did:resource.did,profile:resource.profile} : registration.data?.agentIdentity,
       qualityIssues: draft.data.qualityIssues,
     },
     suggestedNextActions: registration.ok
@@ -133,7 +140,8 @@ export async function registerBatchFromResourceDescriptionsWithSkill(
 
   for (const [index, item] of input.items.entries()) {
     const id = item.id ?? item.sourcePath ?? `item-${index + 1}`;
-    const result = await registerFromResourceDescriptionWithSkill(
+    let result: SkillActionResult<ResourceDescriptionRegistrationOutput>;
+    try { result = await registerFromResourceDescriptionWithSkill(
       profile,
       {
         markdown: item.markdown,
@@ -145,7 +153,9 @@ export async function registerBatchFromResourceDescriptionsWithSkill(
         overrides: item.overrides,
       },
       options,
-    );
+    ); } catch (error) {
+      result = {ok:false, errorCategory:"input error", errorMessage:error instanceof Error ? error.message : String(error)};
+    }
 
     const missingInputs = result.missingInputs ?? result.data?.missingInputs;
     results.push({
@@ -174,7 +184,7 @@ export async function registerBatchFromResourceDescriptionsWithSkill(
 
   return {
     ok: summary.registered > 0 && summary.failed === 0,
-    stage: summary.skipped || summary.failed ? "failed-validation" : "visible-in-discovery",
+    stage: summary.skipped || summary.failed ? "failed-validation" : "accepted-by-registrar",
     data: { summary, results },
     verificationFindings: [
       `Processed ${results.length} resource description item(s).`,
@@ -257,17 +267,28 @@ async function createSubmission(
   input: ResourceDescriptionRegistrationInput,
   registrarDid: string,
 ): Promise<ResourceRegistrationSubmission> {
-  const subject = await ensureSubjectIdentityNode({
-    label: input.subjectLabel ?? "OAN Community Publisher",
-    identityDir: input.identityDir,
-  });
-  const agent = input.reuseAgentIdentity
-    ? await ensureReusableAgentIdentity(candidate, subject.record.did, subject.identityDir, registrarDid)
+  const identityDir = input.identityDir ?? getDefaultIdentityStoreDir();
+  const snapshot = await loadIdentityStoreSnapshot(identityDir);
+  const controller = input.subjectIdentityId
+    ? [...snapshot.subjects, ...snapshot.agents].find(record => record.id === input.subjectIdentityId)
+    : undefined;
+  if (input.subjectIdentityId && !controller) throw new Error("controller_identity_not_found");
+  const selectedAgent = input.agentIdentityId ? snapshot.agents.find(record => record.id === input.agentIdentityId) : undefined;
+  if (input.agentIdentityId && !selectedAgent) throw new Error("agent_identity_not_found");
+  if (selectedAgent && controller && selectedAgent.didDocument.oanMetadata?.controllerDid !== controller.did) {
+    throw new Error("controller_identity_mismatch");
+  }
+  if (selectedAgent && (selectedAgent.profile.resourceType !== candidate.resourceType ||
+      routingCodeFromDid(selectedAgent.did) !== registrarRoutingCodeFromDid(registrarDid))) {
+    throw new Error("resource_identity_type_or_registrar_mismatch");
+  }
+  const agent = selectedAgent ? {record:selectedAgent} : input.reuseAgentIdentity
+    ? await ensureReusableAgentIdentity(candidate, controller?.did, identityDir, registrarDid)
     : await createAgentIdentityNode({
         label: candidate.name,
         resourceType: candidate.resourceType,
-        ownerSubjectDid: subject.record.did,
-        identityDir: subject.identityDir,
+        ownerSubjectDid: controller?.did,
+        identityDir,
         description: candidate.description,
         capabilityTags: candidate.capabilityTags,
         authorizedDomains: candidate.authorizedDomains,
@@ -287,33 +308,33 @@ async function createSubmission(
     packageVersion: candidate.version,
   });
   enrichSubmission(submission, candidate);
-  return finalizeRegistrationSubmissionWithProof(submission, {
+  const now = new Date();
+  const finalized = await finalizeRegistrationSubmission(submission, now);
+  const signed = await finalizeRegistrationSubmissionWithProof(finalized, {
     resourceIdentity: agent.record,
-    controllerIdentity: subject.record,
+    controllerIdentity: controller ?? agent.record,
     registrarDid,
+    now,
   });
+  preserveControllerDocument(signed, controller ?? agent.record);
+  agent.record.didDocument = signed.didDocument;
+  const {upsertIdentityRecord} = await import("@openagenet/oan-sdk-ts");
+  await saveIdentityStoreSnapshot(upsertIdentityRecord(await loadIdentityStoreSnapshot(identityDir), agent.record), identityDir);
+  return signed;
 }
 
 async function ensureReusableAgentIdentity(
   candidate: ResourceDescriptionRegistrationCandidate,
-  ownerSubjectDid: string,
+  ownerSubjectDid: string | undefined,
   identityDir: string,
   registrarDid: string,
 ): Promise<{ record: OanIdentityRecord; identityDir: string }> {
   const snapshot = await loadIdentityStoreSnapshot(identityDir);
   const registrarRoutingCode = registrarRoutingCodeFromDid(registrarDid);
-  const existing =
-    snapshot.agents.find((record) => record.id === snapshot.defaultAgentId && routingCodeFromDid(record.did) === registrarRoutingCode) ??
-    snapshot.agents.find(
-      (record) =>
-        record.profile.resourceType === candidate.resourceType &&
-        routingCodeFromDid(record.did) === registrarRoutingCode,
-    ) ??
-    snapshot.agents.find(
-      (record) =>
-        record.profile.label === candidate.name &&
-        routingCodeFromDid(record.did) === registrarRoutingCode,
-    );
+  const existing = snapshot.agents.find(record =>
+    record.profile.label === candidate.name && record.profile.resourceType === candidate.resourceType &&
+    routingCodeFromDid(record.did) === registrarRoutingCode &&
+    (record.didDocument.oanMetadata?.controllerDid ?? record.did) === (ownerSubjectDid ?? record.did));
   if (!existing) {
     return createAgentIdentityNode({
       label: candidate.name,
@@ -864,6 +885,6 @@ function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
   const entries = Object.entries(value as Record<string, unknown>)
     .filter(([, entryValue]) => entryValue !== undefined)
-    .sort(([left], [right]) => left.localeCompare(right));
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
   return `{${entries.map(([key, entryValue]) => `${JSON.stringify(key)}:${canonicalJson(entryValue)}`).join(",")}}`;
 }

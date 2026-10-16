@@ -1,6 +1,6 @@
 ---
 name: oan-community-skill
-description: Community-facing OpenAgenet (OAN) workflow skill for registering agent_service, skill, mcp_server, and tool_api resources through Registrar, querying Discovery including semantic discovery/explain results, validating registration submissions, managing local user/product identity material, and checking resource lifecycle against official or user-configured Registrar/Discovery endpoints. Use when helping community users consume OAN rather than operate OAN infrastructure.
+description: Help community users register OAN resources or controllers, discover resources, query records and registration credentials, and inspect publication progress through official or user-configured Registrar/Discovery services. Includes local identity signing and batch resource onboarding. Excludes OAN Forum and infrastructure operations.
 ---
 
 # OAN Community Skill
@@ -29,9 +29,14 @@ Use this skill for:
 - suggesting capability tags for public product registration
 - using the official Registrar/Discovery by default, or user-configured
   third-party Registrar/Discovery endpoints
+- registering a dedicated `controller`, or using a registered resource/controller
+  to authorize another resource
+- querying individual resource records, bounded resource pages, registration
+  credential status, and controller-authorized registration VC retrieval
 
 Do not use this skill for:
 
+- OAN Forum login, publishing, editing, hiding, or moderation
 - starting Root, Registrar, Discovery, CDN, NATS, or PostgreSQL locally
 - assuming access to a Root-private trust-indexer endpoint
 - building a full local OAN topology for the user
@@ -45,10 +50,9 @@ Do not use this skill for:
 ## Endpoint Model
 
 Prefer official public endpoints unless the user provides explicit third-party
-`baseUrl` or endpoints. The TypeScript implementation should source official
-defaults from the SDK's `DEFAULT_OAN_OFFICIAL_ENDPOINTS` through
-`DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS`, so future official IP/domain migration
-is centralized.
+`baseUrl` or endpoints. The live community gateway default is centralized in
+`DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS.baseUrl`; SDK subdomain constants are
+reference values, not the default transport for this package.
 
 - Base URL: `https://www.openagenet.xyz`
 - Homepage: `https://openagenet.xyz`
@@ -78,6 +82,14 @@ Use `nodeSelectionMode: "official-preferred"` by default. Use
 Discovery pair or a third-party `baseUrl`. Use `"custom-preferred"` only when
 fallback to official nodes is acceptable for that workflow.
 
+`registrarEndpoint` and `discoveryEndpoint` explicitly override the selected
+endpoint for their service. `custom-only` has no implicit official base URL:
+an omitted service is unavailable, not silently redirected to official nodes.
+It can be used with just one service for search-only or registration-only use.
+Endpoint arrays choose the first endpoint according to the mode; they do not
+perform automatic failover. Signed writes must never be replayed against
+another Registrar. Read retries are bounded; registration POSTs are not retried.
+
 Root and CDN may be used only as lifecycle inspection surfaces. Community users
 should normally interact through Registrar and Discovery concepts.
 
@@ -92,6 +104,46 @@ Assume these first-class resource forms:
 
 Reject unsupported resource forms unless the protocol types and live service
 surface have been intentionally extended.
+
+`controller` is additionally supported by `register({generateIdentity: ...})`
+as an identity-control role, not a fifth discoverable product form.
+
+## Execution And Registration Ownership
+
+Read [references/community-workflows.md](references/community-workflows.md) for
+CLI input examples, all three ownership scenarios, third-party configuration,
+resource queries, and credential retrieval.
+
+From this package, run `npm ci`, then `npm run build`. The reusable entry point is
+`node scripts/oan-community.mjs --help` (installed npm command: `oan-community`).
+All input/output files use UTF-8. Keep identity directories and credential
+receipts outside Git; the CLI's `--output` saves structured results locally.
+
+Resolve the actual Registrar DID through the selected node's
+`GET /registrar/status` before generating routing codes or signing. An explicit
+`registrarDid` is an expected identity and must match that node. Do not use a
+sample DID or derive identity from a hostname.
+
+- Default: a resource controls itself. It has its own local private key and
+  needs no unregistered developer/controller identity.
+- Dedicated controller: register `resourceType: "controller"` first, preserving
+  the signed DID document and local identity. This action registers one identity;
+  it does not silently register extra resources.
+- External controller: supply `controllerIdentityId` (or `subjectIdentityId`)
+  from the local store, or an explicit local `controllerIdentity`. It must already
+  be registered as required by the selected Registrar. The resource still has
+  its own signing key. Controller authorization concerns registration/document
+  updates; it does not replace the resource's identity.
+
+The implementation retains the controller's exact signed DID document rather
+than rewriting its resource type. A prepared signed submission is transmitted
+unchanged. Missing/expired control proofs require re-signing with local resource
+and controller identities; recomputing hashes alone cannot repair a signature.
+`draftRegistrationFromResourceDescription()` reads node status and generates
+local signed material, but does not publish. It creates one resource identity;
+`registerFromResourceDescription()` submits that draft without generating a
+second identity. Use explicit `agentIdentityId` for retries or a new version;
+automatic reuse requires matching name, type, Registrar routing and controller.
 
 ## Resource Description Registration
 
@@ -170,7 +222,7 @@ and proof fields before submission.
 Preserve these semantics:
 
 - `resourceDid` must be `did:oan`
-- `resourceType` must match the DID subject code
+- resource/subject type is metadata; a DID routing-code does not encode type
 - `didDocument.id` must equal `resourceDid`
 - `oanMetadata.resourceType` and `oanMetadata.subjectType` must match the
   submission resource type
@@ -222,6 +274,21 @@ When available, read `/discovery/query/explain` output to explain why candidates
 matched. If semantic search is disabled or falls back to keyword search, present
 that as normal and continue with the returned candidates.
 
+`includeExplanation: false` skips the extra explain request. A zero-result search
+is successful but does not prove any particular resource is indexed. Never turn
+`preferredDomain` into a capability tag or invent an authorization-domain query
+filter: the current query schema has text/type/tags/protocol/version/limit.
+
+`queryResource()` returns either the Registrar's public record or the Discovery
+package. `listResources()` fetches one bounded page (default 20, maximum 100)
+and retains its continuation cursor. A missing Discovery record does not mean
+registration failed. Public Registrar records deliberately omit the registration
+VC. `registrationCredentialStatus()` reads its status; `registrationCredential()`
+uses the registered controller's local signature for the private VC query.
+The current Registrar only enables that query when its stored controller-access
+binding permits it; self-controlled/older registrations may return 403. Preserve
+the VC from the original registration response instead of promising recovery.
+
 ## Implementation Notes
 
 Read these files when changing package behavior:
@@ -233,7 +300,11 @@ Read these files when changing package behavior:
 - `src/discovery.ts`
 - `src/lifecycle.ts`
 - `src/capability-assist.ts`
+- `src/query.ts`
+- `src/registrar.ts`
+- `scripts/oan-community.mjs`
 - `tests/oan-community-skill-tests.ts`
+- `tests/community-current-contract-tests.ts`
 
 `src/governance-assist.ts` and `src/operator-assist.ts` are compatibility
 helpers from an earlier broader boundary. Do not grow them for new community

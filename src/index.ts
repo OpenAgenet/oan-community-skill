@@ -13,6 +13,7 @@ export * from "./governance-assist.js";
 export * from "./operator-assist.js";
 export * from "./capability-assist.js";
 export * from "./resource-description.js";
+export * from "./query.js";
 
 import { createDefaultProfile } from "./profiles.js";
 import { discoverResourcesWithSkill } from "./discovery.js";
@@ -31,6 +32,8 @@ import {
   registerFromResourceDescriptionWithSkill,
 } from "./resource-description.js";
 import { validateRegistrationInput } from "./validation.js";
+import { queryResourceWithSkill, listResourcesWithSkill, registrationCredentialStatusWithSkill, registrationCredentialWithSkill,
+  type ResourceQueryInput, type ResourceListInput, type RegistrationCredentialInput } from "./query.js";
 import type {
   DiscoveryQueryAssistInput,
   DiscoverySkillInput,
@@ -62,7 +65,7 @@ export class OanSkill {
   }
 
   draftRegistrationFromResourceDescription(input: ResourceDescriptionRegistrationInput) {
-    return draftRegistrationFromResourceDescriptionWithSkill(input);
+    return draftRegistrationFromResourceDescriptionWithSkill(input, this.profile, this.options);
   }
 
   registerFromResourceDescription(input: ResourceDescriptionRegistrationInput) {
@@ -79,6 +82,31 @@ export class OanSkill {
 
   lifecycle(input: LifecycleSkillInput) {
     return inspectLifecycleWithSkill(this.profile, input, this.options);
+  }
+
+  queryResource(input: ResourceQueryInput) {
+    return queryResourceWithSkill(this.profile, input, this.options);
+  }
+
+  listResources(input: ResourceListInput) {
+    return listResourcesWithSkill(this.profile, input, this.options);
+  }
+
+  registrationCredentialStatus(resourceDid: string) {
+    return registrationCredentialStatusWithSkill(this.profile, resourceDid, this.options);
+  }
+
+  registrationCredential(input: RegistrationCredentialInput) {
+    return registrationCredentialWithSkill(this.profile,input,this.options);
+  }
+
+  async registrationDomains() {
+    try {
+      const {createOanClient} = await import("./client-factory.js");
+      return {ok:true as const, data:await createOanClient(this.profile,this.options).getRegistrationDomainCatalog()};
+    } catch(error) {
+      return {ok:false as const, errorMessage:error instanceof Error ? error.message : String(error)};
+    }
   }
 
   governanceAssist(input: GovernanceAssistInput) {

@@ -32,13 +32,16 @@ export function validateRegistrationInput(
     };
   }
   const findings: string[] = [];
-  const submission = normalizeRegistrationSubmissionForOan(input.submission);
+  let submission: NonNullable<ValidationSkillInput["submission"]>;
+  try { submission = normalizeRegistrationSubmissionForOan(input.submission); }
+  catch(error) { return {ok:false,stage:"failed-validation",errorCategory:"input error",
+    errorMessage:error instanceof Error ? error.message : String(error)}; }
   const resourceDid = String(submission.resourceDid ?? "");
   const resourceType = String(submission.resourceType ?? "");
 
   try {
     assertDidOan(resourceDid);
-    assertSupportedInitialResourceType(submission.resourceType);
+    if (submission.resourceType !== "controller") assertSupportedInitialResourceType(submission.resourceType);
     findings.push("resourceDid uses did:oan shape");
     assertDidSubjectMatchesResourceType(resourceDid, submission.resourceType);
     findings.push("resourceType is validated from metadata, not inferred from DID routing-code");

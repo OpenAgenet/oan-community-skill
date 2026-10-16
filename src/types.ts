@@ -43,6 +43,8 @@ export interface RetryPolicy {
 export interface OanSkillProfile {
   nodeSelectionMode: NodeSelectionMode;
   baseUrl?: string;
+  registrarEndpoint?: string;
+  discoveryEndpoint?: string;
   officialRegistrarEndpoints?: string[];
   registrarDid?: string;
   officialDiscoveryEndpoints?: string[];
@@ -77,17 +79,24 @@ export interface RegistrationSkillInput {
   identityDir?: string;
   subjectIdentityId?: string;
   agentIdentityId?: string;
+  /** Local record of an already registered controller (subject or resource). */
+  controllerIdentityId?: string;
+  /** Use for re-signing a prepared submission after changing metadata. Never transmitted. */
+  resourceIdentity?: OanIdentityRecord;
+  controllerIdentity?: OanIdentityRecord;
   createSubjectIfMissing?: boolean;
   generateIdentity?: {
     subjectLabel?: string;
     resourceLabel: string;
-    resourceType: Extract<ResourceType, "agent_service" | "skill" | "mcp_server" | "tool_api">;
+    resourceType: Extract<ResourceType, "agent_service" | "skill" | "mcp_server" | "tool_api" | "controller">;
     description?: string;
     capabilityTags?: string[];
     authorizedDomains?: string[];
     endpoint?: string;
     manifestUrl?: string;
     schemaUrl?: string;
+    packageVersion?: string;
+    protocol?: string;
   };
 }
 
@@ -100,6 +109,7 @@ export interface RegistrationSkillOutput {
 
 export interface DiscoverySkillInput {
   query: ResourceDiscoveryQuery;
+  includeExplanation?: boolean;
 }
 
 export interface DiscoverySkillOutput {
@@ -207,6 +217,7 @@ export interface ResourceDescriptionRegistrationInput {
   subjectLabel?: string;
   subjectIdentityId?: string;
   agentIdentityId?: string;
+  registrarDid?: string;
   reuseAgentIdentity?: boolean;
   sourceName?: string;
   sourceUrl?: string;

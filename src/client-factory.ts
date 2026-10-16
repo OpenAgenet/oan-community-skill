@@ -6,21 +6,83 @@
 import { OanClient } from "@openagenet/oan-sdk-ts/client";
 import { GovernanceClient } from "@openagenet/oan-sdk-ts/governance";
 import type { OanSkillProfile } from "./types.js";
-import { selectBaseUrl, selectDiscoveryEndpoint, selectRegistrarEndpoint } from "./profiles.js";
+import {
+  selectBaseUrl,
+  selectDiscoveryEndpoint,
+  selectRegistrarEndpoint,
+  validateEndpoint,
+} from "./profiles.js";
 
 export interface SkillClientFactoryOptions {
   fetchImpl?: typeof fetch;
 }
 
-export function createOanClient(profile: OanSkillProfile, options: SkillClientFactoryOptions = {}): OanClient {
+export function createOanClient(
+  profile: OanSkillProfile,
+  options: SkillClientFactoryOptions = {},
+): OanClient {
   return new OanClient({
     baseUrl: selectBaseUrl(profile),
-    registrarEndpoint: selectRegistrarEndpoint(profile),
-    discoveryEndpoint: selectDiscoveryEndpoint(profile),
-    rootEndpoint: profile.rootReferenceEndpoint,
-    cdnEndpoint: profile.cdnReferenceEndpoint,
-    fetchImpl: options.fetchImpl,
+    registrarEndpoint: selectRegistrarEndpoint(profile) ?? "",
+    discoveryEndpoint: selectDiscoveryEndpoint(profile) ?? "",
+    rootEndpoint: profile.allowDirectRootInspection
+      ? profile.rootReferenceEndpoint
+        ? validateEndpoint(profile.rootReferenceEndpoint)
+        : (selectBaseUrl(profile) ?? "")
+      : "",
+    cdnEndpoint: profile.allowDirectCdnInspection
+      ? profile.cdnReferenceEndpoint
+        ? validateEndpoint(profile.cdnReferenceEndpoint)
+        : (selectBaseUrl(profile) ?? "")
+      : "",
+    fetchImpl: createSkillFetch(profile, options.fetchImpl),
   });
+}
+
+/** Bound every request. Retry only reads; never replay registration or signed writes. */
+export function createSkillFetch(
+  profile: OanSkillProfile,
+  fetchImpl = globalThis.fetch.bind(globalThis),
+): typeof fetch {
+  return (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(
+      typeof input === "string" || input instanceof URL
+        ? String(input)
+        : input.url,
+    );
+    if (
+      (!profile.allowDirectRootInspection &&
+        url.pathname.startsWith("/root/")) ||
+      (!profile.allowDirectCdnInspection && url.pathname.startsWith("/cdn/"))
+    ) {
+      throw new Error("direct_inspection_disabled");
+    }
+    const read = (init?.method ?? "GET").toUpperCase() === "GET";
+    const attempts = read
+      ? Math.min(5, Math.max(1, profile.retryPolicy?.maxAttempts ?? 1))
+      : 1;
+    for (let attempt = 1; ; attempt++) {
+      const timeout = AbortSignal.timeout(profile.requestTimeoutMs ?? 15_000);
+      const signal = init?.signal
+        ? AbortSignal.any([init.signal, timeout])
+        : timeout;
+      try {
+        const response = await fetchImpl(input, { ...init, signal });
+        if (
+          !read ||
+          ![429, 502, 503, 504].includes(response.status) ||
+          attempt >= attempts
+        )
+          return response;
+        await response.body?.cancel();
+      } catch (error) {
+        if (!read || attempt >= attempts || init?.signal?.aborted) throw error;
+      }
+      await new Promise((resolve) =>
+        setTimeout(resolve, profile.retryPolicy?.delayMs ?? 500),
+      );
+    }
+  }) as typeof fetch;
 }
 
 export function createGovernanceClient(
