@@ -126,8 +126,45 @@ export function validateRegistrationInput(
   }
   const metadata = submission.didDocument.oanMetadata;
   const authorization = submission.controllerAuthorizationProof;
+  const declaredController = submission.didDocument.controller;
+  const declaredControllers = typeof declaredController === "string"
+    ? [declaredController]
+    : Array.isArray(declaredController)
+      ? declaredController
+      : [];
+  const uniqueControllers = [...new Set(declaredControllers)];
+  if (declaredController !== undefined && (uniqueControllers.length === 0 || uniqueControllers.some(value => typeof value !== "string" || !value.trim()))) {
+    return {
+      ok: false, stage: "failed-validation", errorCategory: "controller declaration error",
+      errorMessage: "invalid_controller_declaration",
+      suggestedNextActions: ["Provide exactly one non-empty top-level controller DID and regenerate signed registration material."],
+    };
+  }
+  if (declaredController !== undefined && uniqueControllers.length > 1) {
+    return {
+      ok: false, stage: "failed-validation", errorCategory: "controller declaration error",
+      errorMessage: "multiple_controllers_not_supported",
+      suggestedNextActions: ["Use the single controller supported by the current registration profile and regenerate all proofs and hashes."],
+    };
+  }
+  const declaredControllerDid = uniqueControllers[0];
   const controller = metadata?.controllerDid;
-  if (controller && controller !== submission.resourceDid) {
+  const externalController = declaredControllerDid !== undefined && declaredControllerDid !== submission.resourceDid;
+  if (externalController && !controller) {
+    return {
+      ok: false, stage: "failed-validation", errorCategory: "controller declaration error",
+      errorMessage: "external_controller_metadata_required",
+      suggestedNextActions: ["Set didDocument.oanMetadata.controllerDid to the declared external controller, then regenerate the DID Document, hashes and controller authorization proof."],
+    };
+  }
+  if (controller && controller !== declaredControllerDid) {
+    return {
+      ok: false, stage: "failed-validation", errorCategory: "controller declaration error",
+      errorMessage: "controller_declaration_mismatch",
+      suggestedNextActions: ["Make the top-level controller and oanMetadata.controllerDid identical, then regenerate all signed material."],
+    };
+  }
+  if (externalController) {
     const challenge = authorization?.challenge;
     const proof = authorization?.proof;
     const method = authorization?.controllerDidDocument?.verificationMethod?.find(
