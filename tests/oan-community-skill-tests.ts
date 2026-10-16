@@ -593,6 +593,109 @@ try {
   await rm(identityDir, { recursive: true, force: true });
 }
 
+// A default package version is retried as a community-skill metadata revision
+// only after the Registrar explicitly reports a version conflict.
+const revisionIdentityDir = await mkdtemp(join(tmpdir(), "oan-community-skill-revision-test-"));
+let revisionRegistrationAttempts = 0;
+const revisionFetchStub: typeof fetch = (async (input: string | URL, init?: RequestInit) => {
+  const url = String(input);
+  const method = (init?.method ?? "GET").toUpperCase();
+  if (method === "GET" && url.includes("/discovery/index/resources/")) {
+    return new Response(JSON.stringify({ package: { packageVersion: "1.0.1" } }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  if (method === "POST" && url.endsWith("/resources/register")) {
+    revisionRegistrationAttempts += 1;
+    if (revisionRegistrationAttempts === 1) {
+      return new Response(JSON.stringify({ code: "resource_version_conflict" }), {
+        status: 409,
+        headers: { "content-type": "application/json" },
+      });
+    }
+  }
+  return fetchStub(input, init);
+}) as typeof fetch;
+try {
+  const revisionSkill = new OanSkill(
+    {
+      nodeSelectionMode: "custom-only",
+      registrarDid: "did:oan:P9aBc:2LmNo3PqRsTuVwXyZaBcDeFgHiJkLmNo",
+      customRegistrarEndpoints: ["https://registrar.example"],
+      customDiscoveryEndpoints: ["https://discovery.example"],
+      rootReferenceEndpoint: "https://root.example",
+      cdnReferenceEndpoint: "https://cdn.example",
+      trustIndexerEndpoint: "https://indexer.example",
+      allowGovernanceStateReads: true,
+    },
+    { fetchImpl: revisionFetchStub },
+  );
+  const revised = await revisionSkill.register({
+    identityDir: revisionIdentityDir,
+    generateIdentity: {
+      resourceLabel: "Revision Test Skill",
+      resourceType: "skill",
+      description: "Metadata revision retry.",
+      capabilityTags: ["generated.skill"],
+      authorizedDomains: ["legal"],
+    },
+  });
+  assert(revised.ok, "default version conflict should retry successfully");
+  assert(revisionRegistrationAttempts === 2, `version conflict should retry exactly once (${revisionRegistrationAttempts})`);
+  const revisionRequest = capturedRequests
+    .filter((request) => request.key === "POST https://registrar.example/resources/register")
+    .at(-1);
+  assert(
+    (revisionRequest?.body as ResourceRegistrationSubmission | undefined)?.packageVersion === "1.0.1.1",
+    "default version conflict should use the discovered version and .1 revision suffix",
+  );
+  const revisionBody = revisionRequest?.body as ResourceRegistrationSubmission | undefined;
+  assert(
+    revisionBody?.didDocument?.oanMetadata?.packageInfo?.version === "1.0.1.1",
+    "revision DID Document packageInfo should match packageVersion",
+  );
+  assert(
+    revisionBody?.packageHash === `sha256:${await hashRegistrationPackageBinding(revisionBody)}`,
+    "revision packageHash should be recomputed after the version change",
+  );
+} finally {
+  await rm(revisionIdentityDir, { recursive: true, force: true });
+}
+
+// An explicitly supplied resource version is never rewritten automatically.
+let explicitVersionAttempts = 0;
+const explicitVersionFetchStub: typeof fetch = (async (input: string | URL, init?: RequestInit) => {
+  const url = String(input);
+  if ((init?.method ?? "GET").toUpperCase() === "POST" && url.endsWith("/resources/register")) {
+    explicitVersionAttempts += 1;
+    return new Response(JSON.stringify({ code: "resource_version_conflict" }), {
+      status: 409,
+      headers: { "content-type": "application/json" },
+    });
+  }
+  return fetchStub(input, init);
+}) as typeof fetch;
+const explicitVersionSkill = new OanSkill(
+  {
+    nodeSelectionMode: "custom-only",
+    registrarDid: "did:oan:P9aBc:2LmNo3PqRsTuVwXyZaBcDeFgHiJkLmNo",
+    customRegistrarEndpoints: ["https://registrar.example"],
+    customDiscoveryEndpoints: ["https://discovery.example"],
+  },
+  { fetchImpl: explicitVersionFetchStub },
+);
+const explicitVersionResult = await explicitVersionSkill.register({
+  generateIdentity: {
+    resourceLabel: "Explicit Version Skill",
+    resourceType: "skill",
+    packageVersion: "2.4.0",
+    authorizedDomains: ["legal"],
+  },
+});
+assert(!explicitVersionResult.ok, "explicit version conflict should remain a failure");
+assert(explicitVersionAttempts === 1, "explicit version conflict must not retry");
+
 const discovery = await skill.discover({ query: { resourceType: "skill", limit: 5 } });
 assert(discovery.ok, "discovery should pass");
 assert(discovery.data?.response.candidates.length === 1, "discovery candidate count mismatch");

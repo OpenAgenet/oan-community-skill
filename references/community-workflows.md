@@ -208,6 +208,16 @@ is a compatibility alias. When explicitly reusing a resource ID, the original
 external controller is resolved from the same local store if omitted; an
 explicit conflicting controller fails instead of transferring ownership.
 
+When `packageVersion` is omitted, the community skill uses its default version.
+If the Registrar explicitly returns `resource_version_conflict`, it first reads
+the resource package version for the same DID from the official Discovery node,
+then uses a metadata-revision suffix such as `1.0.0.1`, followed by
+`1.0.0.2`, re-signing and recomputing all hashes for each attempt. If official
+Discovery is unavailable or cannot provide a version, only a small bounded
+fallback retry is allowed and the final error asks the user to resolve the
+conflict. This is a community-skill convention, not an OAN protocol
+requirement. An explicitly supplied version is never rewritten automatically.
+
 CLI batch items may provide `sourcePath` instead of inline text. A missing file
 is recorded as an item failure and processing continues. Batch results retain
 each successful `registration` response (including VC) and `agentIdentity`.

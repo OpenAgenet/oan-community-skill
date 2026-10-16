@@ -31,6 +31,7 @@ import {
 import { loadIdentityStoreSnapshot, saveIdentityStoreSnapshot } from "./registration-state.js";
 import { createHash } from "node:crypto";
 import { resolveRegistrarDid } from "./registrar.js";
+import { DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS } from "./profiles.js";
 import { saveRegistrationFiles } from "./registration-files.js";
 import {
   objectInput,
@@ -43,6 +44,7 @@ export async function registerResourceWithSkill(
   profile: OanSkillProfile,
   input: RegistrationSkillInput,
   options: { fetchImpl?: typeof fetch } = {},
+  retryState: { automaticVersionRetry?: boolean; attempts?: number } = {},
 ): Promise<SkillActionResult<RegistrationSkillOutput>> {
   let localIdentity: { id: string; did: string } | undefined;
   try {
@@ -216,6 +218,46 @@ export async function registerResourceWithSkill(
           error.body && typeof error.body === "object"
             ? (error.body as Record<string, unknown>)
             : { message: String(error.body ?? "") };
+        const serverCode = typeof body.code === "string"
+          ? body.code
+          : typeof body.error === "string" ? body.error
+            : body.message === "resource_version_conflict" ? body.message : undefined;
+        const automaticVersionRetry =
+          retryState.automaticVersionRetry ??
+          (!input.submission?.packageVersion && !input.generateIdentity?.packageVersion &&
+            Boolean(prepared.agentIdentity || input.resourceIdentity || input.generateIdentity));
+        const attempts = retryState.attempts ?? 0;
+        if (serverCode === "resource_version_conflict" && automaticVersionRetry && attempts < 3) {
+          const discoveredVersion = await discoverOfficialPackageVersion(
+            normalizedSubmission.resourceDid,
+            options.fetchImpl,
+          );
+          const currentVersion = normalizedSubmission.packageVersion;
+          const revisionBase = discoveredVersion &&
+            currentVersion.startsWith(`${discoveredVersion}.`)
+            ? currentVersion
+            : (discoveredVersion ?? currentVersion);
+          const nextVersion = incrementResourceRevision(
+            revisionBase,
+            discoveredVersion ? 0 : attempts,
+          );
+          const retryInput: RegistrationSkillInput = input.submission
+            ? {
+                ...input,
+                submission: withResourcePackageVersion(input.submission, nextVersion),
+              }
+            : {
+                ...input,
+                generateIdentity: {
+                  ...input.generateIdentity!,
+                  packageVersion: nextVersion,
+                },
+              };
+          return registerResourceWithSkill(profile, retryInput, options, {
+            automaticVersionRetry: true,
+            attempts: attempts + 1,
+          });
+        }
         try {
           await markIdentityRegistrationState(
             prepared.persistedIdentity ?? prepared.agentIdentity,
@@ -227,7 +269,6 @@ export async function registerResourceWithSkill(
           // Preserve the Registrar's rejection and diagnostics if the local
           // state store is unavailable.
         }
-        const serverCode = typeof body.code === "string" ? body.code : typeof body.error === "string" ? body.error : undefined;
         return {
           ok: false,
           stage: "failed-submission",
@@ -245,7 +286,7 @@ export async function registerResourceWithSkill(
           }),
           verificationFindings: validation.verificationFindings,
           suggestedNextActions: [
-            "Inspect the Registrar/Root rejection body and fix the submission material.",
+            "Inspect the Registrar/Root rejection body and fix the submission material. If the official Discovery lookup was unavailable, resolve the resource_version_conflict before retrying.",
           ],
         };
       }
@@ -277,6 +318,74 @@ export async function registerResourceWithSkill(
       ],
     };
   }
+}
+
+function withResourcePackageVersion(
+  submission: ResourceRegistrationSubmission,
+  packageVersion: string,
+): ResourceRegistrationSubmission {
+  const didDocument = structuredClone(submission.didDocument);
+  for (const service of didDocument.service ?? []) service.version = packageVersion;
+  const metadata = didDocument.oanMetadata;
+  if (metadata?.resourceDescription && typeof metadata.resourceDescription === "object") {
+    (metadata.resourceDescription as Record<string, unknown>).version = packageVersion;
+  }
+  if (metadata?.agentDescription && typeof metadata.agentDescription === "object") {
+    (metadata.agentDescription as Record<string, unknown>).version = packageVersion;
+  }
+  if (metadata?.packageInfo && typeof metadata.packageInfo === "object") {
+    (metadata.packageInfo as Record<string, unknown>).version = packageVersion;
+  }
+  return { ...submission, packageVersion, didDocument };
+}
+
+/**
+ * Community-skill convention for a metadata-only revision. This is not an
+ * OAN protocol version rule: it is used only after the Registrar explicitly
+ * rejects the default version because that resource/version already has a
+ * different document hash. For example, 1.0.1 -> 1.0.1.1 -> 1.0.1.2.
+ */
+async function discoverOfficialPackageVersion(
+  resourceDid: string,
+  fetchImpl: typeof fetch | undefined,
+): Promise<string | undefined> {
+  try {
+    const endpoint = `${DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS.discoveryEndpoint}/discovery/index/resources/${encodeURIComponent(resourceDid)}`;
+    const response = await (fetchImpl ?? globalThis.fetch.bind(globalThis))(endpoint, {
+      method: "GET",
+      headers: { accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) return undefined;
+    const body = await response.json() as Record<string, unknown>;
+    const resourcePackage = body.package && typeof body.package === "object"
+      ? body.package as Record<string, unknown>
+      : body;
+    const didDocument = resourcePackage.didDocument && typeof resourcePackage.didDocument === "object"
+      ? resourcePackage.didDocument as Record<string, unknown>
+      : undefined;
+    const metadata = didDocument?.oanMetadata && typeof didDocument.oanMetadata === "object"
+      ? didDocument.oanMetadata as Record<string, unknown>
+      : undefined;
+    const packageInfo = metadata?.packageInfo && typeof metadata.packageInfo === "object"
+      ? metadata.packageInfo as Record<string, unknown>
+      : undefined;
+    if (typeof packageInfo?.version === "string") return packageInfo.version;
+    return typeof resourcePackage.packageVersion === "string"
+      ? resourcePackage.packageVersion
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function incrementResourceRevision(version: string, fallbackAttempt: number): string {
+  const match = String(version).trim().match(/^(\d+(?:\.\d+)+)$/);
+  if (!match) throw new Error("resource_version_conflict_requires_numeric_package_version");
+  const parts = match[1].split(".");
+  if (parts.length < 4) parts.push(String(fallbackAttempt + 1));
+  else parts[parts.length - 1] = String(Number(parts[parts.length - 1]) + 1);
+  return parts.join(".");
 }
 
 async function prepareSubmission(

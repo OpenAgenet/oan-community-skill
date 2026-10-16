@@ -26,6 +26,9 @@ Use this skill for:
   Registrar
 - querying Discovery, including semantic query explanations when available
 - checking whether a registered resource has become visible in Discovery
+- retrying a default-version registration as a metadata revision when the
+  Registrar explicitly returns `resource_version_conflict`; the official
+  Discovery record is consulted first and fallback retries are bounded
 - suggesting capability tags for public product registration
 - using the official Registrar/Discovery by default, or user-configured
   third-party Registrar/Discovery endpoints
