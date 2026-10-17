@@ -1,3 +1,8 @@
+// Copyright (c) 2026 OpenAgenet contributors
+//
+// Initial author: JINLIANG XU
+// Email: jlxufly@gmail.com
+
 import type { RegistrationFiles } from './types.js';
 /** Local-only references, not identity contents. Never send this manifest to a server. */
 export interface RuntimeIdentityHandoff {
