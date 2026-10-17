@@ -32,6 +32,7 @@ import { loadIdentityStoreSnapshot, saveIdentityStoreSnapshot } from "./registra
 import { createHash } from "node:crypto";
 import { resolveRegistrarDid } from "./registrar.js";
 import { DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS } from "./profiles.js";
+import { createRuntimeIdentityHandoff } from "./runtime-handoff.js";
 import { saveRegistrationFiles } from "./registration-files.js";
 import {
   objectInput,
@@ -194,6 +195,7 @@ export async function registerResourceWithSkill(
         identityDir: input.identityDir ?? getDefaultIdentityStoreDir(),
         data: {
           files,
+          runtimeHandoff: files ? createRuntimeIdentityHandoff(normalizedSubmission.resourceDid, files, normalizedSubmission.didDocument.oanMetadata?.controllerDid) : undefined,
           fileSaveError,
           registration,
           lifecycle,

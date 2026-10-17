@@ -304,3 +304,7 @@ Use `identities` to locate saved identity IDs without printing keys. Batch resul
 preserve per-item receipts; a partial batch returns `ok:false` and exit code 1.
 See [the community workflow guide](references/community-workflows.md) for all CLI
 actions, input types, controller reuse, third-party profiles and recovery steps.
+
+## Local identity handoff
+
+Registration results may include a local-only Runtime material manifest. See [Runtime handoff](references/runtime-handoff.md) for its scope and security boundary.

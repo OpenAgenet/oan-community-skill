@@ -105,6 +105,7 @@ export interface RegistrationSkillInput {
 }
 
 export interface RegistrationSkillOutput {
+  runtimeHandoff?: import("./runtime-handoff.js").RuntimeIdentityHandoff;
   files?: RegistrationFiles;
   fileSaveError?: string;
   registration: ResourceRegistrationResponse;
