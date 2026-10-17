@@ -33,6 +33,14 @@ test('configured verification and protected calls share host tools; missing capa
   assert.equal((await communityVerifyIdentity({action:'inspect',sessionRef:'id'},{...backend,async call(){throw {code:'session_expired',message:'private-path'};}})).errorCode,'session_expired');
 });
 
+test('skill identity entrypoints reject host-only fields and malformed protected calls before backend dispatch',async()=>{
+  const calls:string[]=[];const backend={capabilities:{...capabilities,workflow:true,businessProtection:true},async call(name:string){calls.push(name);return {};}};
+  assert.deepEqual(await communityVerifyIdentity({action:'begin',input:{callerId:'forged'}},backend),{ok:false,errorCode:'host_only_argument'});
+  assert.deepEqual(await communityProtectedCall({routeRef:'r',sessionRef:'s',payload:{tenantId:'forged'}},backend),{ok:false,errorCode:'host_only_argument'});
+  assert.deepEqual(await communityProtectedCall({routeRef:'r',sessionRef:'s',payload:[] as any},backend),{ok:false,errorCode:'invalid_protected_call_input'});
+  assert.deepEqual(calls,[]);
+});
+
 test('CLI exposes capability probe and fails verification without reading identity material', () => {
   const run = (action: string) => spawnSync(process.execPath, ['scripts/oan-community.mjs', action], { encoding: 'utf8' });
   const probe = run('identity-capabilities');
