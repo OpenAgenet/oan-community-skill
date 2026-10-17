@@ -17,6 +17,9 @@ export * from "./query.js";
 export * from "./identities.js";
 
 import { createDefaultProfile } from "./profiles.js";
+import {inspectCommunityEvidence, type CommunityEvidenceBackend} from './evidence.js';
+export * from './evidence.js';
+export * from './publication-backend.js';
 import { discoverResourcesWithSkill } from "./discovery.js";
 import { governanceAssistWithSkill } from "./governance-assist.js";
 import { inspectLifecycleWithSkill } from "./lifecycle.js";
@@ -53,12 +56,17 @@ import type {
 export class OanSkill {
   readonly profile: OanSkillProfile;
 
-  constructor(profile: Partial<OanSkillProfile> = {}, private readonly options: { fetchImpl?: typeof fetch } = {}) {
+  constructor(profile: Partial<OanSkillProfile> = {}, private readonly options: { fetchImpl?: typeof fetch; evidenceBackend?: CommunityEvidenceBackend } = {}) {
     this.profile = createDefaultProfile(profile);
   }
 
   validate(input: ValidationSkillInput) {
     return validateRegistrationInput(input);
+  }
+
+  /** L1 public evidence inspection; does not establish a mutual session or protect business calls. */
+  verifyEvidence(input: Parameters<CommunityEvidenceBackend['verify']>[0]) {
+    return inspectCommunityEvidence(input,this.options.evidenceBackend);
   }
 
   register(input: RegistrationSkillInput) {

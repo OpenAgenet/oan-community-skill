@@ -6,11 +6,12 @@
 
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import { OanSkill, listLocalIdentities, COMMUNITY_IDENTITY_VERIFICATION_CAPABILITIES, identityVerificationUnavailable } from "../dist/index.js";
 
 const [action, ...args] = process.argv.slice(2);
 const usage =
-  "Usage: oan-community <identity-capabilities|verify-identity|domains|identities|draft|register|register-description|register-batch|discover|query|list|lifecycle|credential-status|credential|capability-tags|suggest-registration|suggest-query|validate> [--input input.json] [--description resource.md] [--profile profile.json] [--output result.json]\nregister accepts the JSON output of draft directly. list defaults to Discovery. Relative input paths use the current working directory.";
+  "Usage: oan-community <identity-capabilities|verify-identity|verify-evidence|domains|identities|draft|register|register-description|register-batch|discover|query|list|lifecycle|credential-status|credential|capability-tags|suggest-registration|suggest-query|validate> [--input input.json] [--description resource.md] [--profile profile.json] [--output result.json]\nregister accepts the JSON output of draft directly. list defaults to Discovery. Relative input paths use the current working directory.";
 try {
   if (!action || action === "--help") {
     console.log(usage);
@@ -19,7 +20,7 @@ try {
   const flags = {};
   for (let i = 0; i < args.length; i += 2) {
     if (
-      !["--input", "--profile", "--output", "--description"].includes(
+      !["--input", "--profile", "--output", "--description", "--evidence-host"].includes(
         args[i],
       ) ||
       !args[i + 1]
@@ -31,6 +32,7 @@ try {
     JSON.parse((await readFile(path, "utf8")).replace(/^\uFEFF/, ""));
   const skill = new OanSkill(
     flags["--profile"] ? await load(flags["--profile"]) : {},
+    flags['--evidence-host'] ? {evidenceBackend: await (await import(pathToFileURL(resolve(flags['--evidence-host'])).href)).createEvidenceBackend()} : {},
   );
   let input = flags["--input"] ? await load(flags["--input"]) : {};
   if (!input || typeof input !== "object" || Array.isArray(input))
@@ -69,6 +71,7 @@ try {
     );
   }
   const actions = {
+    "verify-evidence": () => skill.verifyEvidence(input),
     "identity-capabilities": () => ({ ok: true, data: COMMUNITY_IDENTITY_VERIFICATION_CAPABILITIES }),
     "verify-identity": () => identityVerificationUnavailable(),
     domains: () => skill.registrationDomains(),

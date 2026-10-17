@@ -41,6 +41,18 @@ import {
   accessUrlInput,
 } from "./input.js";
 
+/** Trusted host only: freeze the final wire submission before durable journaling/network I/O. */
+export async function prepareRegistrationForHost(profile: OanSkillProfile,input: RegistrationSkillInput,options:{fetchImpl?:typeof fetch}={}) {
+  const registrarDid=await resolveRegistrarDid(profile,input.registrarDid,options);
+  const prepared=await prepareSubmission(input,registrarDid);
+  const submission=await finalizeRegistrationSubmissionWithControllerProof(prepared,registrarDid);
+  assertSubmissionProofFresh(submission);
+  assertPublicMaterial(submission);
+  const validation=validateRegistrationInput({submission});
+  if(!validation.ok)throw new Error('publication_candidate_invalid');
+  return submission;
+}
+
 export async function registerResourceWithSkill(
   profile: OanSkillProfile,
   input: RegistrationSkillInput,
