@@ -50,6 +50,12 @@ export async function prepareRegistrationForHost(profile: OanSkillProfile,input:
   assertPublicMaterial(submission);
   const validation=validateRegistrationInput({submission});
   if(!validation.ok)throw new Error('publication_candidate_invalid');
+  const identity=prepared.agentIdentity??prepared.persistedIdentity;
+  if(identity){
+    const directory=input.identityDir??getDefaultIdentityStoreDir();
+    await saveIdentityStoreSnapshot(upsertIdentityRecord(await loadIdentityStoreSnapshot(directory),
+      {...identity,didDocument:submission.didDocument}),directory);
+  }
   return submission;
 }
 
@@ -555,7 +561,7 @@ async function markIdentityRegistrationState(
   await saveIdentityStoreSnapshot(snapshot, identityDir);
 }
 
-function assertSubmissionProofFresh(submission: ResourceRegistrationSubmission): void {
+export function assertSubmissionProofFresh(submission: ResourceRegistrationSubmission): void {
   const proofs = [submission.subjectControlProof, submission.controllerAuthorizationProof]
     .filter(Boolean) as Array<{ challenge?: { expiresAt?: string } }>;
   for (const proof of proofs) {

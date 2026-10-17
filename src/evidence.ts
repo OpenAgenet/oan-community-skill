@@ -15,9 +15,16 @@ export async function inspectCommunityEvidence(input: Parameters<CommunityEviden
     return {ok:false as const,errorCode:'invalid_identity_evidence'};
   }
   try {
-    const report=await backend.verify(structuredClone(input));
+    const supplied=await backend.verify(structuredClone(input));
+    // Never forward arbitrary backend objects: a loader error or backend could attach a VC/key.
+    const known=new Set(['documentSignature','documentBinding','registrationTrust','freshness','registrationStatus','privateVc','governance','controllerBinding','instanceBinding','liveRevocation']);
+    const report={valid:supplied?.valid===true,checks:Array.isArray(supplied?.checks)?supplied.checks.map(c=>({
+      name:known.has(c?.name)?c.name:'unsupportedCheck',
+      status:['passed','failed','not_checked'].includes(c?.status)?c.status:'not_checked',
+      ...(typeof c?.code==='string' && /^[a-z][a-z0-9_]{0,95}$/.test(c.code)?{code:c.code}:{})
+    })):[]};
     const required=['documentSignature','documentBinding','registrationTrust','freshness','registrationStatus'];
-    if (!report || !Array.isArray(report.checks) || !required.every(name=>report.checks.some(c=>c.name===name && c.status==='passed')) || report.valid!==true) {
+    if (report.checks.some(c=>c.status==='failed') || !required.every(name=>report.checks.some(c=>c.name===name && c.status==='passed')) || report.valid!==true) {
       return {ok:false as const,errorCode:'identity_evidence_not_verified',data:report};
     }
     return {ok:true as const,data:report};
