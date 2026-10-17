@@ -18,6 +18,8 @@ export * from "./identities.js";
 
 import { createDefaultProfile } from "./profiles.js";
 import {inspectCommunityEvidence, type CommunityEvidenceBackend} from './evidence.js';
+import {communityVerifyIdentity,communityProtectedCall,type CommunityIdentityBackend} from './identity-backend.js';
+import {COMMUNITY_IDENTITY_VERIFICATION_CAPABILITIES} from './identity-verification.js';
 export * from './evidence.js';
 export * from './publication-backend.js';
 import { discoverResourcesWithSkill } from "./discovery.js";
@@ -56,7 +58,7 @@ import type {
 export class OanSkill {
   readonly profile: OanSkillProfile;
 
-  constructor(profile: Partial<OanSkillProfile> = {}, private readonly options: { fetchImpl?: typeof fetch; evidenceBackend?: CommunityEvidenceBackend } = {}) {
+  constructor(profile: Partial<OanSkillProfile> = {}, private readonly options: { fetchImpl?: typeof fetch; evidenceBackend?: CommunityEvidenceBackend;identityBackend?:CommunityIdentityBackend } = {}) {
     this.profile = createDefaultProfile(profile);
   }
 
@@ -68,6 +70,9 @@ export class OanSkill {
   verifyEvidence(input: Parameters<CommunityEvidenceBackend['verify']>[0]) {
     return inspectCommunityEvidence(input,this.options.evidenceBackend);
   }
+  verifyIdentity(input:Parameters<typeof communityVerifyIdentity>[0]){return communityVerifyIdentity(input,this.options.identityBackend);}
+  protectedCall(input:Parameters<typeof communityProtectedCall>[0]){return communityProtectedCall(input,this.options.identityBackend);}
+  identityCapabilities(){return this.options.identityBackend?.capabilities??COMMUNITY_IDENTITY_VERIFICATION_CAPABILITIES;}
 
   register(input: RegistrationSkillInput) {
     return registerResourceWithSkill(this.profile, input, this.options);
@@ -142,3 +147,4 @@ export class OanSkill {
 export * from "./runtime-handoff.js";
 
 export * from "./identity-verification.js";
+export * from './identity-backend.js';

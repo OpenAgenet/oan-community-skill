@@ -1,6 +1,6 @@
 ---
 name: oan-community-skill
-description: Help community users register OAN resources or controllers, discover resources, query records and registration credentials, and inspect publication progress through official or user-configured Registrar/Discovery services. Includes local identity signing and batch resource onboarding. For mutual identity verification, inspect local backend capabilities; workflow support is currently framework-only and unavailable by default. Excludes OAN Forum and infrastructure operations.
+description: Help community users register OAN resources or controllers, discover resources, query records and registration credentials, and inspect publication progress through official or user-configured Registrar/Discovery services. Includes local identity signing and batch resource onboarding. For mutual identity verification, inspect local backend capabilities; supports a configured authenticated Runtime backend and remains unavailable without one. Excludes OAN Forum and infrastructure operations.
 ---
 
 # OAN Community Skill
@@ -456,6 +456,6 @@ Prefer actionable remediation over vague failure text.
 
 Read [references/identity-verification.md](references/identity-verification.md) when the user asks to verify a peer and have the peer verify this agent. This is a formal Skill adoption path for compatible Hermes/OpenClaw and other runtimes; a dedicated plugin or Sidecar is not required.
 
-Run `identity-capabilities` first. Current `workflow: false` means the local handshake adapter is not implemented/configured. `verify-identity` returns a structured unavailable error; do not claim that this command performs verification. Do not load private identity contents into model context or substitute DID comparison or a peer's natural-language acknowledgement for proof.
+Run `identity-capabilities --identity-host <trusted-local-module>` first. `workflow: true` means the configured host provides begin/accept/advance/inspect/close; without a host it remains false and verification fails closed. Use `verify-identity --identity-host <trusted-local-module> --input <public-input.json>` to exchange the four signed public messages. Resume through inspect; only report completion after signed final confirmation and both local checks. Do not load private identity contents into model context or substitute DID comparison or a peer's natural-language acknowledgement for proof.
 
-Registration/discovery remain independent of this backend. A future completed handshake proves the stated identities within that session and evidence scope; it does not automatically protect later business traffic. Use a separate protected invocation for request/result binding.
+Registration/discovery remain independent of this backend. A completed handshake proves the stated identities within that session and evidence scope; it does not automatically protect later business traffic. Use a separate protected invocation for request/result binding.

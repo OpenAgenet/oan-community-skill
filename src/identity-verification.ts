@@ -3,9 +3,9 @@
 // Initial author: JINLIANG XU
 // Email: jlxufly@gmail.com
 
-/** Framework capability contract, not an implemented mutual-authentication service.
+/** Capability contract for an explicitly configured authenticated local backend.
  * No Runtime dependency is required for existing registration/discovery workflows.
- * A future authenticated local adapter probes this contract before accepting work.
+ * An authenticated local adapter probes this contract before accepting work.
  */
 export interface IdentityVerificationCapabilities {
   contractVersion: 1;
@@ -31,6 +31,6 @@ export function identityVerificationUnavailable() {
   return {
     ok: false as const,
     errorCode: 'identity_verification_backend_unavailable',
-    errorMessage: 'Mutual identity verification is planned, but no authenticated local workflow adapter is configured. Registration and discovery remain available.',
+    errorMessage: 'No authenticated local identity workflow adapter is configured. Registration and discovery remain available.',
   };
 }
