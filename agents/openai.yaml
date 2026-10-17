@@ -1,4 +1,4 @@
 interface:
   display_name: "OAN Community Skill"
-  short_description: "Register, discover and query OAN agent resources"
-  default_prompt: "Use $oan-community-skill to register, discover or query OAN resources through official or user-configured nodes, keep private keys local, and report saved identity and credential files."
+  short_description: "Register, discover, query and check OAN verification readiness"
+  default_prompt: "Use $oan-community-skill to register, discover or query OAN resources through official or user-configured nodes, keep private keys local, report saved identity and credential files, and check local capability availability before attempting mutual identity verification."

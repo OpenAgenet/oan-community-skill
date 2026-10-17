@@ -1,11 +1,16 @@
 #!/usr/bin/env node
+// Copyright (c) 2026 OpenAgenet contributors
+//
+// Initial author: JINLIANG XU
+// Email: jlxufly@gmail.com
+
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { OanSkill, listLocalIdentities } from "../dist/index.js";
+import { OanSkill, listLocalIdentities, COMMUNITY_IDENTITY_VERIFICATION_CAPABILITIES, identityVerificationUnavailable } from "../dist/index.js";
 
 const [action, ...args] = process.argv.slice(2);
 const usage =
-  "Usage: oan-community <domains|identities|draft|register|register-description|register-batch|discover|query|list|lifecycle|credential-status|credential|capability-tags|suggest-registration|suggest-query|validate> [--input input.json] [--description resource.md] [--profile profile.json] [--output result.json]\nregister accepts the JSON output of draft directly. list defaults to Discovery. Relative input paths use the current working directory.";
+  "Usage: oan-community <identity-capabilities|verify-identity|domains|identities|draft|register|register-description|register-batch|discover|query|list|lifecycle|credential-status|credential|capability-tags|suggest-registration|suggest-query|validate> [--input input.json] [--description resource.md] [--profile profile.json] [--output result.json]\nregister accepts the JSON output of draft directly. list defaults to Discovery. Relative input paths use the current working directory.";
 try {
   if (!action || action === "--help") {
     console.log(usage);
@@ -64,6 +69,8 @@ try {
     );
   }
   const actions = {
+    "identity-capabilities": () => ({ ok: true, data: COMMUNITY_IDENTITY_VERIFICATION_CAPABILITIES }),
+    "verify-identity": () => identityVerificationUnavailable(),
     domains: () => skill.registrationDomains(),
     identities: () => listLocalIdentities(input),
     "capability-tags": () => skill.capabilityAssist(input),

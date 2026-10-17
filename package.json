@@ -37,7 +37,7 @@
     "prepack": "npm run build",
     "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit",
     "check:public": "npm run build && node scripts/check-public-services.mjs",
-    "test": "node ./node_modules/tsx/dist/cli.mjs tests/oan-community-skill-tests.ts && node ./node_modules/tsx/dist/cli.mjs tests/community-current-contract-tests.ts && npm run build && node tests/community-cli-tests.mjs && tsx --test tests/runtime-handoff.test.ts"
+    "test": "node ./node_modules/tsx/dist/cli.mjs tests/oan-community-skill-tests.ts && node ./node_modules/tsx/dist/cli.mjs tests/community-current-contract-tests.ts && npm run build && node tests/community-cli-tests.mjs && tsx --test tests/runtime-handoff.test.ts tests/identity-verification.test.ts"
   },
   "dependencies": {
     "@openagenet/oan-sdk-ts": "1.1.0"

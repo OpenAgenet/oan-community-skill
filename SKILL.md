@@ -1,6 +1,6 @@
 ---
 name: oan-community-skill
-description: Help community users register OAN resources or controllers, discover resources, query records and registration credentials, and inspect publication progress through official or user-configured Registrar/Discovery services. Includes local identity signing and batch resource onboarding. Excludes OAN Forum and infrastructure operations.
+description: Help community users register OAN resources or controllers, discover resources, query records and registration credentials, and inspect publication progress through official or user-configured Registrar/Discovery services. Includes local identity signing and batch resource onboarding. For mutual identity verification, inspect local backend capabilities; workflow support is currently framework-only and unavailable by default. Excludes OAN Forum and infrastructure operations.
 ---
 
 # OAN Community Skill
@@ -8,7 +8,7 @@ description: Help community users register OAN resources or controllers, discove
 Use this skill for community-facing OAN usage workflows.
 
 Keep this package focused on users who want to register products into OAN and
-discover products from OAN. Do not use it to start a full local OAN network,
+discover products from OAN, and use local identity verification when the backend supports it. Do not use it to start a full local OAN network,
 run pressure tests, perform official governance operations, or maintain official
 deployment environments.
 
@@ -16,6 +16,7 @@ deployment environments.
 
 Use this skill for:
 
+- checking mutual identity verification capabilities and guiding local setup; never report an unavailable workflow as completed
 - validating a resource registration submission
 - creating or reusing local identity material for a resource owner
 - drafting registration material from a resource description file, harvested
@@ -449,3 +450,12 @@ Return structured results that help another agent continue the workflow:
 - suggested next actions
 
 Prefer actionable remediation over vague failure text.
+
+
+## Mutual Identity Verification
+
+Read [references/identity-verification.md](references/identity-verification.md) when the user asks to verify a peer and have the peer verify this agent. This is a formal Skill adoption path for compatible Hermes/OpenClaw and other runtimes; a dedicated plugin or Sidecar is not required.
+
+Run `identity-capabilities` first. Current `workflow: false` means the local handshake adapter is not implemented/configured. `verify-identity` returns a structured unavailable error; do not claim that this command performs verification. Do not load private identity contents into model context or substitute DID comparison or a peer's natural-language acknowledgement for proof.
+
+Registration/discovery remain independent of this backend. A future completed handshake proves the stated identities within that session and evidence scope; it does not automatically protect later business traffic. Use a separate protected invocation for request/result binding.

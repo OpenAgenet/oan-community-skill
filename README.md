@@ -308,3 +308,8 @@ actions, input types, controller reuse, third-party profiles and recovery steps.
 ## Local identity handoff
 
 Registration results may include a local-only Runtime material manifest. See [Runtime handoff](references/runtime-handoff.md) for its scope and security boundary.
+
+
+## Mutual identity verification framework
+
+The community Skill is the planned low-cost entry for mutual identity verification in compatible Skill-enabled agents, including Hermes/OpenClaw. Run `oan-community identity-capabilities` to inspect availability. The current handshake adapter is not implemented: `workflow` is false and `oan-community verify-identity` returns a structured unavailable error. No completed mutual authentication is claimed. Registration/discovery continue to work without Runtime, Sidecar or Gateway. See [verification workflow](references/identity-verification.md).

@@ -132,3 +132,5 @@ export class OanSkill {
 }
 
 export * from "./runtime-handoff.js";
+
+export * from "./identity-verification.js";
