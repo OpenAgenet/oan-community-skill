@@ -137,6 +137,43 @@ Resolve the actual Registrar DID through the selected node's
 `registrarDid` is an expected identity and must match that node. Do not use a
 sample DID or derive identity from a hostname.
 
+### Routing-code relationship
+
+Do not confuse the routing-code in the Registrar's own DID with the routing-code
+used by resources registered through that Registrar. They are intentionally
+different values. For a DID of the form
+`did:oan:<node-routing-code>:<suffix-code>`, the Registrar's own routing-code is
+the third DID segment. A resource or controller accepted by that Registrar must
+use the first five Base58 characters of the Registrar DID's fourth segment as
+its own routing-code. For example:
+
+```text
+Registrar: did:oan:2Xr85:HmxwAudrBEA87hc6tv9JQx91cNfLqHwv
+Resource:  did:oan:HmxwA:<32-character-suffix>
+```
+
+The `2Xr85` and `HmxwA` values are therefore not expected to be equal. This is
+the protocol binding between a Registrar and the resources/controllers it
+registers; it is not a conflict. Discovery-node routing-codes, resource type,
+controller role, endpoint, package version, and public keys do not determine
+the resource routing-code. Always obtain the active Registrar DID from
+`/registrar/status` and let the SDK derive and validate the resource/controller
+routing-code. Do not diagnose a registration or controller-index problem as a
+routing-code mismatch unless this exact comparison fails.
+
+For completeness, infrastructure-node identifiers follow a separate Root
+binding rule. Root is the trust anchor and keeps its own DID; it is not derived
+from another node. A governance-authorized Registrar, Discovery node, or VC
+issuer must use the first five Base58 characters of the Root DID's suffix-code
+as its own routing-code. The resource rule then applies one level below it:
+resources and controllers registered by a Registrar use the first five
+characters of that Registrar DID's suffix-code. Thus the three relationships
+are distinct: Root -> infrastructure node, Registrar -> registered resource,
+and Discovery -> indexed resource. Discovery does not create or assign a
+resource routing-code. Community workflows normally consume these values from
+node status and governance evidence; they must not invent or compare the wrong
+pair of DID segments.
+
 - Default: a resource controls itself. It has its own local private key and
   needs no unregistered developer/controller identity.
 - Dedicated controller: register `resourceType: "controller"` first, preserving
