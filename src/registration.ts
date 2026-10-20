@@ -6,9 +6,7 @@
 import { OanHttpError } from "@openagenet/oan-sdk-ts/client";
 import {
   finalizeRegistrationSubmissionWithProof,
-  hashRegistrationPackageBinding,
-  hashDidDocumentWithProof,
-  normalizeRegistrationSubmissionForOan,
+  prepareRegistrationMaterial,
 } from "@openagenet/oan-sdk-ts";
 import {
   createRegistrationSubmissionFromIdentity,
@@ -29,7 +27,6 @@ import {
   getDefaultIdentityStoreDir,
 } from "@openagenet/oan-sdk-ts/identity-store-node";
 import { loadIdentityStoreSnapshot, saveIdentityStoreSnapshot } from "./registration-state.js";
-import { createHash } from "node:crypto";
 import { resolveRegistrarDid } from "./registrar.js";
 import { DEFAULT_OAN_SKILL_OFFICIAL_ENDPOINTS } from "./profiles.js";
 import { createRuntimeIdentityHandoff } from "./runtime-handoff.js";
@@ -618,10 +615,7 @@ async function finalizeRegistrationSubmissionWithControllerProof(
     return structuredClone(prepared.submission);
   }
   const now = new Date();
-  const submission = await finalizeRegistrationSubmission(
-    prepared.submission,
-    now,
-  );
+  const submission = await prepareRegistrationMaterial(prepared.submission, now);
   if (prepared.subjectIdentity) {
     const signed = await finalizeRegistrationSubmissionWithProof(submission, {
       resourceIdentity:
@@ -639,7 +633,7 @@ async function finalizeRegistrationSubmissionWithControllerProof(
   return submission;
 }
 
-/** SDK 1.1.0 rewrites controller metadata, invalidating its registered document proof. */
+/** Compatibility helper for existing callers; SDK also preserves signed documents. */
 export function preserveControllerDocument(
   submission: ResourceRegistrationSubmission,
   controller: OanIdentityRecord,
@@ -676,183 +670,10 @@ export function assertPublicMaterial(value: unknown): void {
   }
 }
 
-export async function finalizeRegistrationSubmission(
-  input: ResourceRegistrationSubmission,
-  timestamp = new Date(),
-): Promise<ResourceRegistrationSubmission> {
-  const submission = normalizeRegistrationSubmissionForOan(input);
-  const hashAlgorithm = submission.hashAlgorithm || "sha256";
-  const now = timestamp.toISOString();
+// Preserve the community API while sharing protocol preparation with the SDK.
+export { prepareRegistrationMaterial as finalizeRegistrationSubmission } from "@openagenet/oan-sdk-ts";
 
-  submission.hashAlgorithm = hashAlgorithm;
-  submission.packageVersion = submission.packageVersion || "1.0.0";
-  submission.didDocument = enrichDidDocumentMetadata(
-    submission.didDocument as Record<string, unknown>,
-    submission,
-  ) as ResourceRegistrationSubmission["didDocument"];
 
-  const didDocumentHash = `${hashAlgorithm}:${await hashDidDocumentWithProof(submission.didDocument)}`;
-  submission.didDocumentHash = didDocumentHash;
-
-  const metadata = buildResourceMetadata(submission, now);
-  submission.metadataHash = `${hashAlgorithm}:${hashJson(metadata)}`;
-  submission.packageHash = `${hashAlgorithm}:${await hashRegistrationPackageBinding(submission)}`;
-  submission.metadata = {
-    ...(typeof submission.metadata === "object" && submission.metadata
-      ? submission.metadata
-      : {}),
-    name: metadata.name,
-    description: metadata.description,
-    capabilityTags: metadata.capabilityTags,
-    authorizedDomains: metadata.authorizedDomains,
-    lifecycleState: metadata.lifecycleState,
-  };
-  return submission;
-}
-
-function enrichDidDocumentMetadata(
-  didDocument: Record<string, unknown>,
-  submission: ResourceRegistrationSubmission,
-): Record<string, unknown> {
-  const metadata = {
-    ...asRecord(didDocument.oanMetadata),
-  };
-  // serde(default) Vec fields without skip_serializing_if must be present,
-  // even when empty. This is especially common for dedicated controllers.
-  metadata.capabilityTags ??= [];
-  metadata.authorizedDomains ??= [];
-  if (metadata.resourceDescription) {
-    const description = { ...asRecord(metadata.resourceDescription) };
-    description.capabilityTags ??= [];
-    description.useCaseExamples ??= [];
-    metadata.resourceDescription = description;
-  }
-  if (metadata.agentDescription) {
-    const description = { ...asRecord(metadata.agentDescription) };
-    description.capabilityTags ??= [];
-    description.useCaseExamples ??= [];
-    metadata.agentDescription = description;
-  }
-  const packageInfo: Record<string, unknown> = {
-    ...asRecord(metadata.packageInfo),
-    version: submission.packageVersion,
-  };
-  // PackageInfo is deny_unknown_fields in the wire protocol. Hash algorithm
-  // belongs to the submission, not the DID document's packageInfo.
-  delete (packageInfo as Record<string, unknown>).hashAlgorithm;
-  for (const field of ["packageHash", "metadataHash"] as const) {
-    if (/^sha256:0{64}$/.test(String(packageInfo[field])))
-      delete packageInfo[field];
-  }
-  metadata.packageInfo = packageInfo;
-  metadata.implementationLinks = normalizeImplementationLinks(
-    metadata.implementationLinks,
-    submission,
-  );
-  metadata.credentialRequirements = normalizeCredentialRequirements(
-    metadata.credentialRequirements,
-  );
-  // Rust OanMetadata omits these empty vectors during serialization. Apply
-  // that projection before signing, not merely while hashing, so the signed
-  // wire document and the Root's typed document have identical content.
-  for (const field of ["implementationLinks", "credentialRequirements", "protocolBindings", "externalIdentifiers"] as const) {
-    if (Array.isArray(metadata[field]) && metadata[field].length === 0) {
-      delete metadata[field];
-    }
-  }
-  return {
-    ...didDocument,
-    verificationMethod: didDocument.verificationMethod ?? [],
-    authentication: didDocument.authentication ?? [],
-    assertionMethod: didDocument.assertionMethod ?? [],
-    service: didDocument.service ?? [],
-    oanMetadata: metadata,
-  };
-}
-
-function normalizeImplementationLinks(
-  value: unknown,
-  submission: ResourceRegistrationSubmission,
-): Array<Record<string, unknown>> {
-  if (!Array.isArray(value)) return [];
-  return value.map((link) => {
-    const record = asRecord(link);
-    return {
-      ...record,
-      targetDid: record.targetDid ?? submission.resourceDid,
-      targetType: record.targetType ?? submission.resourceType,
-    };
-  });
-}
-
-function normalizeCredentialRequirements(
-  value: unknown,
-): Array<Record<string, unknown>> {
-  if (!Array.isArray(value)) return [];
-  return value.map((item) => {
-    const record = asRecord(item);
-    return {
-      id: record.id ?? submissionRequirementId(record),
-      credentialType: record.credentialType ?? record.type,
-      purpose: record.purpose ?? asRecord(record.scope).purpose,
-      issuer: record.issuer,
-      scope: record.scope,
-      presentationMode: record.presentationMode,
-      required: record.required ?? true,
-    };
-  });
-}
-
-function submissionRequirementId(record: Record<string, unknown>): string {
-  return `requirement-${String(record.credentialType ?? record.type ?? "credential")}`;
-}
-
-function buildResourceMetadata(
-  submission: ResourceRegistrationSubmission,
-  now: string,
-): Record<string, unknown> {
-  const oanMetadata = asRecord(submission.didDocument.oanMetadata);
-  const resourceDescription = asRecord(oanMetadata.resourceDescription);
-  return {
-    resourceDid: submission.resourceDid,
-    resourceType: submission.resourceType,
-    subjectType: submission.resourceType,
-    publisherDid: oanMetadata.publisherDid,
-    subjectDid: submission.resourceDid,
-    name: resourceDescription.name ?? "Untitled OAN resource",
-    description: resourceDescription.description ?? "",
-    capabilityTags:
-      oanMetadata.capabilityTags ?? resourceDescription.capabilityTags ?? [],
-    authorizedDomains: oanMetadata.authorizedDomains ?? [],
-    protocolBindings: oanMetadata.protocolBindings ?? [],
-    services: submission.didDocument.service ?? [],
-    lifecycleState: oanMetadata.lifecycleState ?? "active",
-    packageVersion: submission.packageVersion,
-    packageHash: "",
-    metadataHash: "",
-    hashAlgorithm: submission.hashAlgorithm,
-    updatedAt: now,
-  };
-}
-
-function hashJson(value: unknown): string {
-  return createHash("sha256").update(canonicalJson(value)).digest("hex");
-}
-
-function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== "object") return JSON.stringify(value);
-  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
-  const entries = Object.entries(value as Record<string, unknown>)
-    .filter(([, entryValue]) => entryValue !== undefined)
-    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0));
-  return `{${entries.map(([key, entryValue]) => `${JSON.stringify(key)}:${canonicalJson(entryValue)}`).join(",")}}`;
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
 
 function summarizeIdentity(
   record: OanIdentityRecord | undefined,
