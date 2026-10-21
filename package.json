@@ -40,7 +40,7 @@
     "test": "node ./node_modules/tsx/dist/cli.mjs tests/oan-community-skill-tests.ts && node ./node_modules/tsx/dist/cli.mjs tests/community-current-contract-tests.ts && npm run build && node tests/community-cli-tests.mjs && tsx --test tests/runtime-handoff.test.ts tests/identity-verification.test.ts"
   },
   "dependencies": {
-    "@openagenet/oan-sdk-ts": "1.1.0"
+    "@openagenet/oan-sdk-ts": "1.1.1"
   },
   "devDependencies": {
     "@types/node": "^26.0.0",
