@@ -23,6 +23,11 @@ It depends on `@openagenet/oan-sdk-ts`.
 The skill helps users register and discover OAN product resources through
 Registrar and Discovery endpoints. It does not operate the OAN network itself.
 
+This is a Codex/agent Skill distribution package, not only a JavaScript
+library. The published package includes `SKILL.md`, `agents/openai.yaml`,
+`references/`, and CLI `scripts/` in addition to the built TypeScript files;
+these files are required for Skill installation and guided workflows.
+
 ## How To Use It
 
 Use this skill when you have a resource description and want help turning it
@@ -102,6 +107,36 @@ Primary workflows:
 - query Discovery, including semantic query explanations when available
 - inspect resource lifecycle from a product-owner perspective
 - suggest registration metadata, capability tags, and Discovery query filters
+
+## Three registration scenarios
+
+The same local identity store supports three distinct scenarios:
+
+1. **Self-controlled resource** — the resource creates and signs with its own
+   OAN Identity; no external controller is required.
+2. **Dedicated controller registration** — a person or organization registers a
+   controller identity for later administration. The controller is itself a
+   registered OAN subject and can authorize registration or DID Document updates
+   for resources it manages.
+3. **Resource with an existing controller** — the resource creates its own DID
+   and signing key, while an already registered controller signs the controller
+   authorization proof. The controller does not replace the resource's signing
+   identity; it provides the protocol-defined control permissions.
+
+For scenarios 2 and 3, the controller must already be registered and available
+in the selected Registrar's controller index. The registration input must bind
+the declared controller DID to `oanMetadata.controllerDid`; the SDK/Skill
+rejects a mismatched or incomplete binding before submission.
+
+After a successful registration, the Skill stores a receipt and local identity
+materials under the configured `identityDir` (by default the local OAN identity
+store). The DID Document is public verification material, the registration VC
+or receipt records registration evidence, and `identity.json` contains the
+local OAN Identity and private key used for signing and future controller
+authorization. Keep the identity directory, especially OAN Identity/private
+keys and registration credentials, in a protected and backed-up location. The
+directory path is local configuration only and is never uploaded as a resource
+field.
 
 Registration submissions are finalized before they are sent to a Registrar.
 The skill normalizes the DID document subset accepted by Root, fills derived
